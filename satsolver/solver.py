@@ -1,16 +1,18 @@
+from __future__ import print_function
 import re
 from satispy import Variable, Cnf
 from satispy.solver import Minisat
 import pycosat
 
 flags = []
-req_use = "||(foo(^^(bar one))baz)"
+req_use = """|| (a b c)
+            || (g d f)"""
 
 if flags == []: flags = re.findall(r'\w+', req_use)
 sorted(flags, key=len)
 flags.reverse()
 
-print '\n', req_use, '\n'
+print('\n', req_use, '\n')
 
 i = 1
 dict = {}
@@ -21,7 +23,7 @@ for k in flags:
     revr[i] = k
     i += 1
 
-print "The key is:", revr
+print("The key is:", revr)
 
 def getToken(eq):
     eq = eq.strip()
@@ -43,7 +45,7 @@ def getToken(eq):
         length = len(token)
         return ( eq[:length], eq[length:] )
     else:
-        print "No token found:", eq
+        print("No token found:", eq)
         exit(0)
 
 def solveToken(eq):
@@ -58,7 +60,7 @@ def solveToken(eq):
     if token[0] == '(':
         return ( solve(token[1:-1]), eq )
 
-    print "I failed: ", token, eq
+    print("I failed: ", token, eq)
     exit(0)
 
 def all_or(eq):
@@ -124,19 +126,20 @@ def solve(eq):
         var = Variable(op.strip())
         return var & solve(eq)
 
-cnf_out = solve(req_use)
-cnf_str = str(cnf_out)
+for i in range(0, 10000):
+    cnf_out = solve(req_use)
+    cnf_str = str(cnf_out)
 
-print cnf_str
+    # print(cnf_str)
 
-for key in dict:
-    cnf_str = cnf_str.replace(key, str(dict[key]))
-    print key, dict[key]
+    for key in dict:
+        cnf_str = cnf_str.replace(key, str(dict[key]))
+        # print(key, dict[key])
 
-cnf_str = cnf_str[1:-1]
-cnf_lst = cnf_str.split(') & (')
+    cnf_str = cnf_str[1:-1]
+    cnf_lst = cnf_str.split(') & (')
 
-for i in range(len(cnf_lst)):
-    cnf_lst[i] = [int(k) for k in cnf_lst[i].split(' | ')]
+    for i in range(len(cnf_lst)):
+        cnf_lst[i] = [int(k) for k in cnf_lst[i].split(' | ')]
 
-print list( pycosat.itersolve(cnf_lst) )
+    k = (list(pycosat.itersolve(cnf_lst)))
