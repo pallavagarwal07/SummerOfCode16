@@ -126,20 +126,20 @@ def solve(eq):
         var = Variable(op.strip())
         return var & solve(eq)
 
-for i in range(0, 10000):
-    cnf_out = solve(req_use)
-    cnf_str = str(cnf_out)
+cnf_out = solve(req_use)
+cnf_str = str(cnf_out)
 
-    # print(cnf_str)
+# print(cnf_str)
 
-    for key in dict:
-        cnf_str = cnf_str.replace(key, str(dict[key]))
-        # print(key, dict[key])
+for key in dict:
+    cnf_str = cnf_str.replace(key, str(dict[key]))
+    # print(key, dict[key])
 
-    cnf_str = cnf_str[1:-1]
-    cnf_lst = cnf_str.split(') & (')
+cnf_str = cnf_str[1:-1]
+cnf_lst = cnf_str.split(') & (')
 
-    for i in range(len(cnf_lst)):
-        cnf_lst[i] = [int(k) for k in cnf_lst[i].split(' | ')]
+for i in range(len(cnf_lst)):
+    cnf_lst[i] = [int(k) for k in cnf_lst[i].split(' | ')]
 
-    k = (list(pycosat.itersolve(cnf_lst)))
+k = (list(pycosat.itersolve(cnf_lst)))
+print(k)
