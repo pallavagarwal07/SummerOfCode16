@@ -5,10 +5,12 @@ from satispy.solver import Minisat
 import pycosat
 
 flags = []
-req_use = """|| (a b c)
+req_use = """i
+i? (|| (a b c))
             || (g d f)"""
 
 if flags == []: flags = re.findall(r'\w+', req_use)
+flags = list(set(flags))
 sorted(flags, key=len)
 flags.reverse()
 
