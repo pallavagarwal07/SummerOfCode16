@@ -5,11 +5,9 @@ from satispy.solver import Minisat
 import pycosat
 
 flags = []
-req_use = """i
-i? (|| (a b c))
-            || (g d f)"""
+req_use = "?? (a b c)"
 
-if flags == []: flags = re.findall(r'\w+', req_use)
+if flags == []: flags = re.findall(r'[a-zA-Z]+', req_use)
 flags = list(set(flags))
 sorted(flags, key=len)
 flags.reverse()
@@ -96,11 +94,37 @@ def all_xor(eq):
         ret = ret | tmp
     return ret
 
+def at_most(eq):
+    eq = eq.strip()[1:-1]
+    lst = []
+
+    token, eq = solveToken(eq)
+    while token is not None:
+        lst.append(token)
+        token, eq = solveToken(eq)
+
+    ret = Cnf()
+    for a in lst:
+        tmp = Cnf()
+        for b in lst:
+            if a == b:
+                tmp = tmp & b
+            else:
+                tmp = tmp & (-b)
+        ret = ret | tmp
+
+    tmp = Cnf()
+    for b in lst:
+        tmp = tmp & (-b)
+    ret = ret | tmp
+
+    return ret
+
 def solve(eq):
     eq = eq.strip()
     if eq == '': return Cnf()
 
-    op = re.findall(r'^(\^\^|\|\|)', eq)
+    op = re.findall(r'^(\^\^|\|\||\?\?)', eq)
     if op:
         op = op[0]
         if op == '||':
@@ -111,6 +135,10 @@ def solve(eq):
             var, eq = getToken(eq[2:])
             assert var[0] == '(' and var[-1] == ')'
             result = all_xor(var)
+        elif op == '??':
+            var, eq = getToken(eq[2:])
+            assert var[0] == '(' and var[-1] == ')'
+            result = at_most(var)
         return result & solve(eq)
 
     op = re.findall(r'^[a-zA-Z]+\s*\?', eq)
@@ -131,11 +159,8 @@ def solve(eq):
 cnf_out = solve(req_use)
 cnf_str = str(cnf_out)
 
-# print(cnf_str)
-
 for key in dict:
     cnf_str = cnf_str.replace(key, str(dict[key]))
-    # print(key, dict[key])
 
 cnf_str = cnf_str[1:-1]
 cnf_lst = cnf_str.split(') & (')
