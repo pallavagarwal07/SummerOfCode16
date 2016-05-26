@@ -1,3 +1,5 @@
 FROM plabedan/gentoo-minimal
-ADD stabilize.py /root/stabilize.py
+ADD *.py *.so /root/
+ADD satispy /root/satispy
+ADD minisat /bin/
 CMD ["bash"]

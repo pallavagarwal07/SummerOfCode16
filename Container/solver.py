@@ -214,6 +214,8 @@ def solve(eq):
     exit(0)
 
 def main(req_use):
+    if req_use.strip() == '':
+        return [[]]
     # REQUIRED_USE variable value for which the combinations
     # are being generated
 
