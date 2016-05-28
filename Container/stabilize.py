@@ -52,7 +52,7 @@ def dep_resolve(cpv, combo):
         dep = re.findall('^\[ebuild.*\]\s*([^\s]+)', line)
         if dep:
             deps.append(dep[0])
-    return deps, my_env
+    return (deps, my_env)
 
 # For given use flags and required use combination
 # It uses random methods to generate valid yet random
@@ -95,7 +95,7 @@ def get_use_combinations(use_flags, req_use):
     tmp_use = [("-" if random.randrange(0,10) <= bias else "") + k for k in use_flags]
     tmp_use += req_solns[random.randrange(0, len(req_solns))][1]
     final_combinations.append(tmp_use)
-    
+
     # Combination number three: Random + Random
     bias = random.randrange(0,10) # Number between 0 and 9
     tmp_use = [("-" if random.randrange(0,10) <= bias else "") + k for k in use_flags]
@@ -108,6 +108,8 @@ def get_use_combinations(use_flags, req_use):
 # This is the main controller function for the stabilization script.
 # Any package to be stabilized has to be passed to this function
 def stabilize(cpv):
+    print("Now stabilizing,", cpv)
+
     # Retrieve the USE and REQUIRED_USE flags from the portage API
     use_flags, req_use = db.aux_get(cpv, ["USE", "REQUIRED_USE"])
 
@@ -117,30 +119,42 @@ def stabilize(cpv):
     # For every combination, find the dependencies, recursively run
     # their stabilizations, and then finally build this token to see
     # if it succeeds.
-    for use_combo in combos:
-        deps = [ k for k in dep_resolve(cpv, use_combo) if k != cpv ]
-        for dep_cpv, my_env in deps:
+    for i, use_combo in enumerate( combos ):
+        print("Trial number:", i, "for the following USE flag combination:", use_combo)
+        ret_deps, my_env = dep_resolve(cpv, use_combo)
+        print("Current package", cpv, "has the following dependencies:")
+        print("\n".join(ret_deps))
+        deps = [ k for k in ret_deps if k != cpv ]
+        for dep_cpv in deps:
             keywords = db.aux_get(dep_cpv, ["KEYWORDS"])[0].split()
             if '~amd64' in keywords and dep_cpv != cpv:
+                print("Dependency", dep_cpv, "needs to be stabilized first.")
                 ret_code = stabilize(dep_cpv)
                 if ret_code != 0:
                     sys.stderr.write("Stabilization of one or more dependencies failed")
                     exit(0)
                 else:
                     stabilized.append(cpv)
+            else:
+                print("Dependency", dep_cpv, "is already stable")
         args = ['emerge', '--autounmask-write', "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
+        retry = False
         for line in iter(unmask.stdout.readline, b""):
-            line = line
-        yes = sp.Popen(['yes'], stdout=PIPE)
-        etc = sp.Popen(['etc-update', '--automode', '-3'], stdin=yes.stdout,
-                stdout=PIPE)
-        for line in iter(etc.stdout.readline, b""):
-            line = line
-        emm = sp.Popen(['emerge', "="+t], stdout=sp.PIPE)
-        for line in iter(emm.stdout.readline, b""):
-            print(line)
-        print("The return code was: ", emm.returncode)
+            print(line, end='')
+            if 'Autounmask changes' in line:
+               retry = True
+        print("The return code was: ", unmask.returncode)
+        if retry:
+            yes = Popen(['yes'], stdout=PIPE)
+            etc = Popen(['etc-update', '--automode', '-3'], stdin=yes.stdout,
+                    stdout=PIPE)
+            for line in iter(etc.stdout.readline, b""):
+                print(line, end='')
+            emm = Popen(['emerge', "="+cpv], stdout=PIPE)
+            for line in iter(emm.stdout.readline, b""):
+                print(line, end='')
+            print("The return code was: ", emm.returncode)
     return 0
 
 if __name__ == '__main__':

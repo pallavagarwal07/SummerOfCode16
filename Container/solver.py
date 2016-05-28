@@ -211,7 +211,7 @@ def solve(eq):
 
         # This should ideally never be encountered
     print("I failed", eq);
-    exit(0)
+    exit(1)
 
 def main(req_use):
     if req_use.strip() == '':
@@ -228,8 +228,6 @@ def main(req_use):
     # this order by numbers later)
     sorted(flags, key=len)
     flags.reverse()
-
-    print('\n', req_use, '\n')
 
     i = 1
     dict = {}
@@ -261,6 +259,5 @@ def main(req_use):
     k = (list(pycosat.itersolve(cnf_lst)))
     for soln in k:
         for i in range(0, len(soln)):
-            print(soln[i])
             soln[i] = ( "-" if soln[i] < 0 else "" ) + rev_dict[abs(soln[i])]
     return k

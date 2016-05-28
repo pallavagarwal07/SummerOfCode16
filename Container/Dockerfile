@@ -1,5 +1,7 @@
-FROM plabedan/gentoo-minimal
+FROM stage3:latest
 ADD *.py *.so /root/
 ADD satispy /root/satispy
-ADD minisat /bin/
-CMD ["bash"]
+ADD gentoo.conf /etc/portage/repos.conf/
+ADD minisat git /bin/
+RUN mkdir /usr/portage; \
+    emerge --sync;
