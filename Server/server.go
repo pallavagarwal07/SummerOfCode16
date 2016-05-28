@@ -12,9 +12,33 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
+type Node struct {
+	Cpv string
+	Dep []*Node
+
+	State int
+	// 0: Stable
+	// 1: Unstable
+	// 2: Acting Stable
+	// 3: Blocked
+}
+
+type Tmp struct {
+	Cpv     string
+	Indices []int
+	State   int
+}
+
 var database map[string]*Node
 
-func printVars(w io.Writer, vars ...interface{}) {
+func printVars(vars ...interface{}) {
+	w := os.Stdout
 	for i, v := range vars {
 		fmt.Fprintf(w, "» item %d type %T:\n", i, v)
 		j, err := json.MarshalIndent(v, "", "    ")
@@ -29,16 +53,78 @@ func printVars(w io.Writer, vars ...interface{}) {
 		w.Write([]byte("\n\n"))
 	}
 }
+func add(pack *Node, hash map[*Node]int, lookup []*Node, index int) (int, []*Node) {
+	if _, present := hash[pack]; !present {
+		hash[pack] = index
+		lookup = append(lookup, pack)
+		index++
+	}
+	for _, dep := range pack.Dep {
+		index, lookup = add(dep, hash, lookup, index)
+	}
+	return index, lookup
+}
 
-type Node struct {
-	Cpv string
-	Dep []*Node
+func readFromFile(filename string) {
+	file, err := os.Open(filename)
+	lookup := make([]*Node, 0)
+	check(err)
+	defer file.Close()
+	database = make(map[string]*Node)
+	b1 := make([]byte, 50000)
+	var v []Tmp
+	len, err := file.Read(b1)
+	err = json.Unmarshal(b1[:len], &v)
+	check(err)
+	for _, tmp := range v {
+		node := new(Node)
+		node.Cpv = tmp.Cpv
+		node.Dep = make([]*Node, 0)
+		node.State = tmp.State
+		if node.State != 2 {
+			database[node.Cpv] = node
+		}
+		lookup = append(lookup, node)
+	}
+	for i, tmp := range v {
+		for _, dep := range tmp.Indices {
+			fmt.Println(tmp)
+			lookup[i].Dep = append(lookup[i].Dep, lookup[dep])
+		}
+	}
+	printVars(lookup)
+}
 
-	State int
-	// 0: Stable
-	// 1: Unstable
-	// 2: Acting Stable
-	// 3: Blocked
+func saveToFile(filename string) {
+	index := 0
+	hash := make(map[*Node]int)
+	lookup := make([]*Node, 0)
+	for _, pack := range database {
+		index, lookup = add(pack, hash, lookup, index)
+	}
+
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0644)
+	check(err)
+	defer file.Close()
+	file.Write([]byte("["))
+	for i, node := range lookup {
+		file.Write([]byte(fmt.Sprint("{ \"Cpv\":\"", node.Cpv, "\",")))
+		file.Write([]byte("\"Indices\":[ "))
+		for j, dep := range node.Dep {
+			if j != len(node.Dep)-1 {
+				file.Write([]byte(fmt.Sprint(hash[dep], ", ")))
+			} else {
+				file.Write([]byte(fmt.Sprint(hash[dep])))
+			}
+		}
+		file.Write([]byte(fmt.Sprint("], ")))
+		file.Write([]byte(fmt.Sprint("\"State\":", node.State, "}")))
+		if i != len(lookup)-1 {
+			file.Write([]byte(","))
+		}
+		file.Write([]byte("\n"))
+	}
+	file.Write([]byte("]"))
 }
 
 func get(cpv string) *Node {
@@ -81,7 +167,8 @@ func evaluate() {
 		traverse(vertex, ancestor, visited)
 		ancestor[cpv] = false
 	}
-	printVars(os.Stdout, database)
+	saveToFile("Hello")
+	printVars(database)
 }
 
 func b64decode(str string) (string, error) {
@@ -138,6 +225,7 @@ func serverStart(c chan bool) {
 func main() {
 	c := make(chan bool)
 	go serverStart(c)
+	readFromFile("Hello")
 	fmt.Println("Started server on port 80")
 	database = make(map[string]*Node)
 	<-c
