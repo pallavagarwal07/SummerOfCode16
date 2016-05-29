@@ -1,4 +1,4 @@
-FROM stage3:latest
+FROM pallavagarwal07/gentoo-minimal:latest
 ADD *.py *.so /root/
 ADD satispy /root/satispy
 ADD gentoo.conf /etc/portage/repos.conf/
