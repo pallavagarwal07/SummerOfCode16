@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from __future__ import print_function
 import sys, portage, re, subprocess, os
-import solver, random
+import solver, random, requests
 from subprocess import PIPE, Popen
 
 # Save a reference to the portage tree
