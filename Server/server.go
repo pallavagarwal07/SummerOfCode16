@@ -273,7 +273,7 @@ func evaluate() {
 // Simple function to decode base64 and return string
 // instead of an array of bytes
 func b64decode(str string) (string, error) {
-	parent, err1 := base64.URLEncoding.DecodeString(str)
+	parent, err1 := base64.RawURLEncoding.DecodeString(str)
 	return string(parent[:]), err1
 }
 
@@ -311,9 +311,23 @@ func dep(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func stable(w http.ResponseWriter, req *http.Request) {
+	pack_b64 := req.URL.Query().Get("package")
+	pack, _ := b64decode(pack_b64)
+	database[pack].State = 0
+}
+
+func block(w http.ResponseWriter, req *http.Request) {
+	pack_b64 := req.URL.Query().Get("package")
+	pack, _ := b64decode(pack_b64)
+	database[pack].State = 3
+}
+
 func serverStart(c chan bool) {
 	r := mux.NewRouter()
 	r.HandleFunc("/sched-dep", dep)
+	r.HandleFunc("/mark-stable", stable)
+	r.HandleFunc("/mark-blocked", block)
 
 	// Custom http server
 	s := &http.Server{
