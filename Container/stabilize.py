@@ -122,13 +122,13 @@ def stabilize(cpv):
     # For every combination, find the dependencies, recursively run
     # their stabilizations, and then finally build this token to see
     # if it succeeds.
-    for i, use_combo in enumerate( combos ):
+    for i, use_combo in enumerate(combos):
 
         print("Trial number:", i, "for the following USE flag combination:", use_combo)
         ret_deps, my_env = dep_resolve(cpv, use_combo)
         print("Current package", cpv, "has the following dependencies:")
         print("\n".join(ret_deps))
-        
+
         continue_run = True
         deps = [ k for k in ret_deps if k != cpv ]
         for dep_cpv in deps:
@@ -136,19 +136,34 @@ def stabilize(cpv):
             if '~amd64' in keywords and dep_cpv != cpv:
                 print("Dependency", dep_cpv, "needs to be stabilized first.")
                 payload = {
-                        'parent'     : b64encode(cpv),
-                        'dependency' : b64encode(dep_cpv)
-                        }
+                            'parent'     : b64encode(cpv),
+                            'dependency' : b64encode(dep_cpv)
+                          }
+
                 response = requests.get("http://162.246.156.136/sched-dep",
-                                params=payload)
+                                        params=payload)
+
                 if response.status_code != 200:
-                    print("Stabilization server offline. Exiting")
+                    print("Stabilization server offline or unaccessible. Exiting")
                     exit(0)
-                continue_run = False
+                else:
+                    if response.text == "0": # Has already been stabilized
+                        pass
+                    elif response.text == "1": # To be stabilized
+                        continue_run = False
+                    elif response.text == "3": # Should be blocked
+                        with open("/etc/portage/package.mask/stabilizer", "a") as f:
+                            f.write("\n="+dep_cpv)
+                        continue_run = False
+                    elif response.text == "-1":
+                        print("Stabilization server returned error")
+                        exit(0)
             else:
                 print("Dependency", dep_cpv, "is already stable")
+
         if not continue_run:
             return -1
+
         args = ['emerge', '--autounmask-write', "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
         retry = False
@@ -157,12 +172,14 @@ def stabilize(cpv):
             if 'Autounmask changes' in line:
                retry = True
         print("The return code was: ", unmask.returncode)
+
         if retry:
             yes = Popen(['yes'], stdout=PIPE)
             etc = Popen(['etc-update', '--automode', '-3'], stdin=yes.stdout,
-                    stdout=PIPE)
+                    stdout=PIPE )
             for line in iter(etc.stdout.readline, b""):
                 print(line, end='')
+
             emm = Popen(['emerge', "="+cpv], stdout=PIPE)
             for line in iter(emm.stdout.readline, b""):
                 print(line, end='')
@@ -193,10 +210,9 @@ if __name__ == '__main__':
 
     retcode = stabilize(cpv)
     if retcode == 0:
-        requests.get(
-                "http://162.246.156.136/mark-stable",
-                params = { 'package': b64encode(cpv) } )
+        requests.get("http://162.246.156.136/mark-stable",
+                     params = {'package': b64encode(cpv)})
     else:
         requests.get("http://162.246.156.136/mark-blocked",
-                     params = { 'package': b64encode(cpv) } )
-        
+                     params = {'package': b64encode(cpv)})
+

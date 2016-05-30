@@ -47,6 +47,8 @@ type Tmp struct {
 // This database maintains a map from a packages
 // cpv to it's real (State !=2) node
 var database map[string]*Node
+var stable map[string]int
+var unstable map[string]int
 
 // Helpful debugging function to pretty print all
 // variables passed to it (Deep print)
@@ -94,25 +96,36 @@ func add(pack *Node, hash map[*Node]int, lookup []*Node, index int) (int, []*Nod
 }
 
 // Read the package tree from a file
-func readFromFile(filename string) {
+func readFromFile(filename, stable_cpv, unstable_cpv string) {
+	// Character buffer to store input (TODO: Use a better method
+	// in case the data doesn't fit in hardcoded size)
+	b1 := make([]byte, 50000)
+
 	file, err := os.Open(filename) // Open file for reading
-	if err != nil {                // return if any error is found
-		if fmt.Sprintf("%+v", err.(*os.PathError).Err) == "no such file or directory" {
-			return // If file doesn't exist, its not a problem
-		} else {
-			panic(err)
-		}
-	}
-	defer file.Close() // Close file when this function returns
+	check(err)                     // Check for possible errors
+	defer file.Close()             // Close file when function returns
+
+	file1, err := os.Open(stable_cpv)        // Open file for reading
+	check(err)                               // Check for possible errors
+	defer file1.Close()                      // Close file when function returns
+	len1, err := file1.Read(b1)              // Read from the file
+	check(err)                               // Again, check for errors :/
+	stable = make(map[string]int)            // Reset stable map
+	err = json.Unmarshal(b1[:len1], &stable) // Unmarshal string to stable map
+
+	file2, err := os.Open(unstable_cpv)        // Open file for reading
+	check(err)                                 // Check for possible errors
+	defer file2.Close()                        // Close file when function returns
+	len2, err := file2.Read(b1)                // Read from the file
+	check(err)                                 // Again, check for errors :/
+	unstable = make(map[string]int)            // Reset stable map
+	err = json.Unmarshal(b1[:len2], &unstable) // Unmarshal string to stable map
 
 	// Create a lookup from index to node address
 	lookup := make([]*Node, 0)
 
 	// Reinitialise database to clean old data (if present)
 	database = make(map[string]*Node)
-	// Character buffer to store input (TODO: Use a better method
-	// in case the data doesn't fit in hardcoded size)
-	b1 := make([]byte, 50000)
 
 	// Temporary structs (containing references in form of indices)
 	var v []Tmp
@@ -150,12 +163,11 @@ func readFromFile(filename string) {
 			lookup[i].Dep = append(lookup[i].Dep, lookup[dep])
 		}
 	}
-	//printVars(lookup)
 }
 
 // Save the whole database to a file so that the data
 // can be restored later.
-func saveToFile(filename string) {
+func saveToFile(filename, stable_cpv, unstable_cpv string) {
 	// Current index for which lookup is being added
 	// hash: mapping from node address to their index (int)
 	// lookup: mapping from index to node address
@@ -174,6 +186,12 @@ func saveToFile(filename string) {
 	// O_CREATE : create file if it doesn't exist
 	// O_TRUNC  : Remove whatever is in the file
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	check(err)
+	defer file.Close()
+	file1, err := os.OpenFile(stable_cpv, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	check(err)
+	defer file.Close()
+	file2, err := os.OpenFile(unstable_cpv, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	check(err)
 	defer file.Close()
 
@@ -206,6 +224,16 @@ func saveToFile(filename string) {
 	file.Sync()
 	// Sync changes to the file. File will be autoclosed
 	// later due to defer file.Close()
+
+	json1, err1 := json.Marshal(stable)
+	check(err1)
+	file1.Write(json1)
+	file1.Sync()
+
+	json2, err2 := json.Marshal(unstable)
+	check(err2)
+	file2.Write(json2)
+	file2.Sync()
 }
 
 // Get the Node* object from database map
@@ -266,7 +294,7 @@ func evaluate() {
 		traverse(vertex, ancestor, visited)
 		ancestor[cpv] = false
 	}
-	saveToFile("database")
+	saveToFile("database", "stable", "unstable")
 	printVars(database)
 }
 
@@ -304,30 +332,47 @@ func dep(w http.ResponseWriter, req *http.Request) {
 			pnode.Dep = append(pnode.Dep, cnode)
 			evaluate()
 		}
+		for _, d := range pnode.Dep {
+			if d.Cpv == depend {
+				io.WriteString(w, fmt.Sprint(d.State))
+				return
+			}
+		}
 		// Write a message to the request
-		io.WriteString(w, "hello, Dir!\n")
+		io.WriteString(w, "-1")
+		fmt.Println("This should have never been encountered")
 	} else {
-		io.WriteString(w, "Invalid Arguments\n")
+		io.WriteString(w, "-1")
 	}
 }
 
-func stable(w http.ResponseWriter, req *http.Request) {
+func mstable(w http.ResponseWriter, req *http.Request) {
 	pack_b64 := req.URL.Query().Get("package")
 	pack, _ := b64decode(pack_b64)
-	database[pack].State = 0
+	stable[pack]++
+	fmt.Println("Got request to mark", pack, "as stable")
+	if stable[pack] >= 2 {
+		get(pack).State = 0
+	}
+	saveToFile("database", "stable", "unstable")
 }
 
-func block(w http.ResponseWriter, req *http.Request) {
+func mblock(w http.ResponseWriter, req *http.Request) {
 	pack_b64 := req.URL.Query().Get("package")
 	pack, _ := b64decode(pack_b64)
-	database[pack].State = 3
+	unstable[pack]++
+	fmt.Println("Got request to mark", pack, "as unstable")
+	if unstable[pack] >= 5 {
+		get(pack).State = 3
+	}
+	saveToFile("database", "stable", "unstable")
 }
 
 func serverStart(c chan bool) {
 	r := mux.NewRouter()
 	r.HandleFunc("/sched-dep", dep)
-	r.HandleFunc("/mark-stable", stable)
-	r.HandleFunc("/mark-blocked", block)
+	r.HandleFunc("/mark-stable", mstable)
+	r.HandleFunc("/mark-blocked", mblock)
 
 	// Custom http server
 	s := &http.Server{
@@ -348,7 +393,7 @@ func serverStart(c chan bool) {
 func main() {
 	c := make(chan bool)
 	go serverStart(c)
-	readFromFile("database")
+	readFromFile("database", "stable", "unstable")
 	fmt.Println("Started server on port 80")
 	database = make(map[string]*Node)
 	<-c
