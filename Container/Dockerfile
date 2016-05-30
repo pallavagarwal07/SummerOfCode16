@@ -7,4 +7,5 @@ RUN mkdir /usr/portage; \
     eselect python set python2.7; \
     easy_install requests; \
     easy_install satispy; \
-    easy_install pycosat;
+    easy_install pycosat; \
+    touch /root/numpy.py

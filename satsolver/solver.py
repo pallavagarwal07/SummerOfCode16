@@ -1,7 +1,6 @@
 from __future__ import print_function
 import re
 from satispy import Variable, Cnf
-from satispy.solver import Minisat
 import pycosat
 
 
