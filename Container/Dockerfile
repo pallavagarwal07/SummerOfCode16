@@ -1,6 +1,5 @@
 FROM pallavagarwal07/gentoo-minimal:latest
-ADD *.py *.so /root/
-ADD satispy /root/satispy
+ADD *.py /root/
 ADD gentoo.conf /etc/portage/repos.conf/
 ADD minisat git /bin/
 RUN mkdir /usr/portage; \
