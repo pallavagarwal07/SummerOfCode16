@@ -162,15 +162,16 @@ def stabilize(cpv):
                 print("Dependency", dep_cpv, "is already stable")
 
         if not continue_run:
-            return -1
+            return 999999
 
         args = ['emerge', '--autounmask-write', "--backtrack=50", "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
         retry = False
         for line in iter(unmask.stdout.readline, b""):
             print(line, end='')
-            if 'Autounmask changes' in line:
+            if 'Autounmask changes' in line or re.search('needs? updating', line):
                retry = True
+        unmask.wait()
         print("The return code was: ", unmask.returncode)
 
         if retry:
@@ -179,11 +180,12 @@ def stabilize(cpv):
                     stdout=PIPE )
             for line in iter(etc.stdout.readline, b""):
                 print(line, end='')
-
+            etc.wait()
+            yes.terminate()
             emm = Popen(['emerge', "="+cpv], stdout=PIPE)
             for line in iter(emm.stdout.readline, b""):
                 print(line, end='')
-            if emm.returncode != 0:
+            if emm.wait() != 0:
                 return emm.returncode
         else:
             if unmask.returncode != 0:
@@ -212,7 +214,7 @@ if __name__ == '__main__':
     if retcode == 0:
         requests.get("http://162.246.156.136/mark-stable",
                      params = {'package': b64encode(cpv)})
-    else:
+    elif retcode != 999999:
         requests.get("http://162.246.156.136/mark-blocked",
                      params = {'package': b64encode(cpv)})
 
