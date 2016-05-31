@@ -247,6 +247,7 @@ func get(cpv string) *Node {
 		node.State = 1              // Assume it to be unstable
 		database[cpv] = node        // Add it to the database
 	}
+	saveToFile("database", "stable", "unstable")
 	return database[cpv]
 }
 
