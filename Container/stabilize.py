@@ -208,7 +208,7 @@ if __name__ == '__main__':
     cpv = [k for k in token if '9999' not in k]
     if len(cpv) > 1:
         print("Multiple versions found, assuming latest version")
-        cpv = cpv[-1]
+    cpv = cpv[-1]
 
     retcode = stabilize(cpv)
     if retcode == 0:
