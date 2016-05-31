@@ -196,7 +196,16 @@ def stabilize(cpv):
     return 0
 
 if __name__ == '__main__':
-    package = sys.argv[1]
+    if len(sys.argv) < 2:
+        print("No package specified. Asking the server for one")
+        package_resp = requests.get("http://162.246.156.136/request-package")
+        if package_resp.status_code != 200:
+            print("Stabilization server offline or unaccessible. Exiting")
+            exit(0)
+        package = package_resp.text
+        print("Got package:", package)
+    else:
+        package = sys.argv[1]
     try:
         token = db.xmatch("match-all", package)
     except portage.exception.InvalidAtom as e:
@@ -216,8 +225,8 @@ if __name__ == '__main__':
     retcode = stabilize(cpv)
     if retcode == 0:
         requests.get("http://162.246.156.136/mark-stable",
-                     params = {'package': b64encode(cpv)})
+                params = {'package': b64encode(cpv)})
     elif retcode != 999999:
         requests.get("http://162.246.156.136/mark-blocked",
-                     params = {'package': b64encode(cpv)})
+                params = {'package': b64encode(cpv)})
 
