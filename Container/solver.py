@@ -226,7 +226,7 @@ def main(req_use):
     flags = list(set(flags))
     # sort reverse to length (so that they can be replaced in
     # this order by numbers later)
-    sorted(flags, key=len)
+    flags = sorted(flags, key=len)
     flags.reverse()
 
     i = 1
@@ -246,7 +246,7 @@ def main(req_use):
     cnf_str = str(cnf_out)
 
     # Replace all flags with numerical equivalent
-    for key in dict:
+    for key in flags:
         cnf_str = cnf_str.replace(key, str(dict[key]))
 
     # Convert to form needed by pycosat
