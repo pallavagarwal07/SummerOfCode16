@@ -356,6 +356,7 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 		get(pack).State = 0
 	}
 	saveToFile("database", "stable", "unstable")
+	printVars(database)
 }
 
 func mblock(w http.ResponseWriter, req *http.Request) {
@@ -367,6 +368,7 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 		get(pack).State = 3
 	}
 	saveToFile("database", "stable", "unstable")
+	printVars(database)
 }
 
 func serverStart(c chan bool) {
@@ -394,8 +396,8 @@ func serverStart(c chan bool) {
 func main() {
 	c := make(chan bool)
 	go serverStart(c)
+	database = make(map[string]*Node)
 	readFromFile("database", "stable", "unstable")
 	fmt.Println("Started server on port 80")
-	database = make(map[string]*Node)
 	<-c
 }

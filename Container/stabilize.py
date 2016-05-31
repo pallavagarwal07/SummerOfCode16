@@ -114,7 +114,7 @@ def stabilize(cpv):
     print("Now stabilizing,", cpv)
 
     # Retrieve the USE and REQUIRED_USE flags from the portage API
-    use_flags, req_use = db.aux_get(cpv, ["USE", "REQUIRED_USE"])
+    use_flags, req_use = db.aux_get(cpv, ["IUSE", "REQUIRED_USE"])
 
     # Returns a few valid USE flag combinations to test the build
     combos = get_use_combinations(use_flags, req_use)
