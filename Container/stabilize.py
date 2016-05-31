@@ -61,6 +61,9 @@ def dep_resolve(cpv, combo):
 # It uses random methods to generate valid yet random
 # combinations of USE flags to build/test the package
 def get_use_combinations(use_flags, req_use):
+    # use_flags is a string by default
+    use_flags = [k.replace('-','').replace('+','') for k in use_flags.split()]
+
     # List to store final generated USE flag combinations
     final_combinations = []
 
