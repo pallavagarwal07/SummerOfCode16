@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -371,11 +372,47 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 	printVars(database)
 }
 
+func get_leaf_nodes(vertex *Node, visited map[string]bool) []*Node {
+	unstable_dep := 0
+	leaves := make([]*Node, 0)
+	if vertex.State != 1 {
+		return leaves
+	}
+	for _, dep := range vertex.Dep {
+		if dep.State == 1 {
+			unstable_dep++
+			leaves = append(leaves, get_leaf_nodes(dep, visited)...)
+		}
+	}
+	if unstable_dep == 0 {
+		leaves = append(leaves, vertex)
+	}
+	return leaves
+}
+
+func rpack(w http.ResponseWriter, req *http.Request) {
+	visited := make(map[string]bool)
+	leaves := make([]*Node, 0)
+	for cpv, vertex := range database {
+		if visited[cpv] {
+			continue
+		}
+		leaves = append(leaves, get_leaf_nodes(vertex, visited)...)
+	}
+	if len(leaves) == 0 {
+		io.WriteString(w, "None")
+	} else {
+		rand_num := rand.Intn(len(leaves))
+		io.WriteString(w, leaves[rand_num].Cpv)
+	}
+}
+
 func serverStart(c chan bool) {
 	r := mux.NewRouter()
 	r.HandleFunc("/sched-dep", dep)
 	r.HandleFunc("/mark-stable", mstable)
 	r.HandleFunc("/mark-blocked", mblock)
+	r.HandleFunc("/request-package", rpack)
 
 	// Custom http server
 	s := &http.Server{
@@ -394,6 +431,7 @@ func serverStart(c chan bool) {
 }
 
 func main() {
+	rand.Seed(time.Now().UTC().UnixNano())
 	c := make(chan bool)
 	go serverStart(c)
 	database = make(map[string]*Node)
