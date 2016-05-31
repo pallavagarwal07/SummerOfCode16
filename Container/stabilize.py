@@ -164,7 +164,7 @@ def stabilize(cpv):
         if not continue_run:
             return -1
 
-        args = ['emerge', '--autounmask-write', "="+cpv]
+        args = ['emerge', '--autounmask-write', "--backtrack=50", "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
         retry = False
         for line in iter(unmask.stdout.readline, b""):
