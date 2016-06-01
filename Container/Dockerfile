@@ -9,3 +9,4 @@ RUN mkdir /usr/portage; \
     easy_install satispy; \
     easy_install pycosat; \
     touch /root/numpy.py
+CMD ["python2", "/root/stabilize.py"]
