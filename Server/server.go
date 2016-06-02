@@ -407,12 +407,29 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func submitlog(w http.ResponseWriter, req *http.Request) {
+	log_b64 := req.URL.Query().Get("log")
+	log, _ := b64decode(log_b64)
+	filename := req.URL.Query().Get("filename")
+
+	// Open file for writing.
+	// O_WRONLY : only for writing
+	// O_CREATE : create file if it doesn't exist
+	// O_TRUNC  : Remove whatever is in the file
+	file, err := os.OpenFile(filename, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0644)
+	check(err)
+	defer file.Close()
+
+	file.Write([]byte("logs/"+log))
+}
+
 func serverStart(c chan bool) {
 	r := mux.NewRouter()
 	r.HandleFunc("/sched-dep", dep)
 	r.HandleFunc("/mark-stable", mstable)
 	r.HandleFunc("/mark-blocked", mblock)
 	r.HandleFunc("/request-package", rpack)
+	r.HandleFunc("/submit-log", submitlog)
 
 	// Custom http server
 	s := &http.Server{

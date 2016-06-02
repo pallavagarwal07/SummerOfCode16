@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 from __future__ import print_function
-import sys, portage, re, subprocess, os
-import solver, random, base64, requests
+import portage, subprocess, base64, os, re
+import solver, random, requests, sys, time
 from subprocess import PIPE, Popen
 
+log = []
 # Save a reference to the portage tree
 try:
     db = portage.db[portage.root]["porttree"].dbapi
@@ -25,6 +26,21 @@ def abs_flag(flag):
 
 def b64encode(s):
     return base64.urlsafe_b64encode(s).replace('=', '')
+
+def uploadLog():
+    log_txt = "\n".join(log)
+    b64log = b64encode(log_txt)
+    filename = time.strftime("%Y%m%d_%H%M%S")
+    payload = {
+                  'filename': filename,
+                  'log': b64log
+              }
+    response = requests.get("http://162.246.156.136/submit-log",
+            params=payload)
+
+def _exit(n):
+    uploadLog()
+    exit(n)
 
 # For a given token, and a combination of USE flags,
 # This function retrieves the dependencies (highest
@@ -148,7 +164,7 @@ def stabilize(cpv):
 
                 if response.status_code != 200:
                     print("Stabilization server offline or unaccessible. Exiting")
-                    exit(0)
+                    _exit(0)
                 else:
                     if response.text == "0": # Has already been stabilized
                         pass
@@ -160,7 +176,7 @@ def stabilize(cpv):
                         continue_run = False
                     elif response.text == "-1":
                         print("Stabilization server returned error")
-                        exit(0)
+                        _exit(0)
             else:
                 print("Dependency", dep_cpv, "is already stable")
 
@@ -171,6 +187,7 @@ def stabilize(cpv):
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
         retry = False
         for line in iter(unmask.stdout.readline, b""):
+            log.append(line)
             print(line, end='')
             if 'Autounmask changes' in line or re.search('needs? updating', line):
                retry = True
@@ -182,11 +199,13 @@ def stabilize(cpv):
             etc = Popen(['etc-update', '--automode', '-3'], stdin=yes.stdout,
                     stdout=PIPE )
             for line in iter(etc.stdout.readline, b""):
+                log.append(line)
                 print(line, end='')
             etc.wait()
             yes.terminate()
             emm = Popen(['emerge', "="+cpv], stdout=PIPE)
             for line in iter(emm.stdout.readline, b""):
+                log.append(line)
                 print(line, end='')
             if emm.wait() != 0:
                 return emm.returncode
@@ -196,37 +215,44 @@ def stabilize(cpv):
     return 0
 
 if __name__ == '__main__':
+    log.append("Command: " + " ".join(sys.argv))
     if len(sys.argv) < 2:
         print("No package specified. Asking the server for one")
         package_resp = requests.get("http://162.246.156.136/request-package")
         if package_resp.status_code != 200:
             print("Stabilization server offline or unaccessible. Exiting")
-            exit(0)
+            _exit(0)
         package = package_resp.text
         print("Got package:", package)
     else:
         package = sys.argv[1]
+
     try:
         token = db.xmatch("match-all", package)
     except portage.exception.InvalidAtom as e:
         sys.stderr.write("Error: Invalid token name: "+str(e).strip()+"\n")
-        exit(1)
+        _exit(1)
     except portage.exception.AmbiguousPackageName as e:
         sys.stderr.write("Error: Ambiguous token: "+str(e).strip()+"\n")
-        exit(1)
+        _exit(1)
+
+    log.append("Package: " + package)
+
     if token == []:
         sys.stderr.write("Error: No Package Found\n")
-        exit(1)
+        _exit(1)
     cpv = [k for k in token if '9999' not in k]
     if len(cpv) > 1:
         print("Multiple versions found, assuming latest version")
     cpv = cpv[-1]
 
     retcode = stabilize(cpv)
+    log.append("Retcode: ", retcode)
     if retcode == 0:
         requests.get("http://162.246.156.136/mark-stable",
                 params = {'package': b64encode(cpv)})
     elif retcode != 999999:
         requests.get("http://162.246.156.136/mark-blocked",
                 params = {'package': b64encode(cpv)})
+    _exit(0)
 
