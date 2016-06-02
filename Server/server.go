@@ -410,7 +410,7 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 func submitlog(w http.ResponseWriter, req *http.Request) {
 	log_b64 := req.URL.Query().Get("log")
 	log, _ := b64decode(log_b64)
-	filename := req.URL.Query().Get("filename")
+	filename := "logs/" + req.URL.Query().Get("filename")
 
 	// Open file for writing.
 	// O_WRONLY : only for writing
@@ -420,7 +420,7 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	check(err)
 	defer file.Close()
 
-	file.Write([]byte("logs/"+log))
+	file.Write([]byte(log))
 }
 
 func serverStart(c chan bool) {

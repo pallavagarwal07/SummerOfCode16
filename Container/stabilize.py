@@ -28,7 +28,7 @@ def b64encode(s):
     return base64.urlsafe_b64encode(s).replace('=', '')
 
 def uploadLog():
-    log_txt = "\n".join(log)
+    log_txt = "".join(log)
     b64log = b64encode(log_txt)
     filename = time.strftime("%Y%m%d_%H%M%S")
     payload = {
@@ -215,7 +215,7 @@ def stabilize(cpv):
     return 0
 
 if __name__ == '__main__':
-    log.append("Command: " + " ".join(sys.argv))
+    log.append("Command: " + " ".join(sys.argv) + "\n")
     if len(sys.argv) < 2:
         print("No package specified. Asking the server for one")
         package_resp = requests.get("http://162.246.156.136/request-package")
@@ -236,7 +236,7 @@ if __name__ == '__main__':
         sys.stderr.write("Error: Ambiguous token: "+str(e).strip()+"\n")
         _exit(1)
 
-    log.append("Package: " + package)
+    log.append("Package: " + package + "\n")
 
     if token == []:
         sys.stderr.write("Error: No Package Found\n")
@@ -247,7 +247,7 @@ if __name__ == '__main__':
     cpv = cpv[-1]
 
     retcode = stabilize(cpv)
-    log.append("Retcode: ", retcode)
+    log.append("Retcode: " + str(retcode) + "\n")
     if retcode == 0:
         requests.get("http://162.246.156.136/mark-stable",
                 params = {'package': b64encode(cpv)})
