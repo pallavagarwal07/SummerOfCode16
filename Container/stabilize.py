@@ -2,6 +2,7 @@
 from __future__ import print_function
 import portage, subprocess, base64, os, re
 import solver, random, requests, sys, time
+import connection
 from subprocess import PIPE, Popen
 
 log = []
@@ -208,10 +209,18 @@ def stabilize(cpv):
                 log.append(line)
                 print(line, end='')
             if emm.wait() != 0:
-                return emm.returncode
+                if connection.internet_working:
+                    return emm.returncode
+                else:
+                    print("Sorry, but you seem to have an internet failure")
+                    _exit(1)
         else:
             if unmask.returncode != 0:
-                return unmask.returncode
+                if connection.internet_working:
+                    return unmask.returncode
+                else:
+                    print("Sorry, but you seem to have an internet failure")
+                    _exit(1)
     return 0
 
 if __name__ == '__main__':
