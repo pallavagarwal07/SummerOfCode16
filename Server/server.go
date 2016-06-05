@@ -100,7 +100,7 @@ func add(pack *Node, hash map[*Node]int, lookup []*Node, index int) (int, []*Nod
 func readFromFile(filename, stable_cpv, unstable_cpv string) {
 	// Character buffer to store input (TODO: Use a better method
 	// in case the data doesn't fit in hardcoded size)
-	b1 := make([]byte, 50000)
+	b1 := make([]byte, 5000000)
 
 	file, err := os.Open(filename) // Open file for reading
 	check(err)                     // Check for possible errors
@@ -160,7 +160,6 @@ func readFromFile(filename, stable_cpv, unstable_cpv string) {
 	// its index and add to the appropriate list
 	for i, tmp := range v {
 		for _, dep := range tmp.Indices {
-			fmt.Println(tmp)
 			lookup[i].Dep = append(lookup[i].Dep, lookup[dep])
 		}
 	}
@@ -457,11 +456,19 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	// O_WRONLY : only for writing
 	// O_CREATE : create file if it doesn't exist
 	// O_TRUNC  : Remove whatever is in the file
-	file, err := os.OpenFile(filename, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0644)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	check(err)
 	defer file.Close()
 
 	file.Write([]byte(log))
+}
+
+// Function to add package to the tree if it doesn't exist
+func addpack(w http.ResponseWriter, req *http.Request) {
+	pkg := req.URL.Query().Get("package")
+	fmt.Println(pkg)
+	get(pkg)
+	io.WriteString(w, "1")
 }
 
 // Function to handle and route all requests.
@@ -475,6 +482,7 @@ func serverStart(c chan bool) {
 	r.HandleFunc("/mark-blocked", mblock)
 	r.HandleFunc("/request-package", rpack)
 	r.HandleFunc("/submit-log", submitlog)
+	r.HandleFunc("/add-package", addpack)
 
 	// Custom http server
 	s := &http.Server{
