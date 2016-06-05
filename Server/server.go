@@ -348,36 +348,68 @@ func dep(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Function called to mark a particular package cpv as stable
 func mstable(w http.ResponseWriter, req *http.Request) {
+
+	// Get the appropriate package from the GET parameters
 	pack_b64 := req.URL.Query().Get("package")
+
+	// Base64 decode the package name
 	pack, _ := b64decode(pack_b64)
+	// Increment the stable count (We can't rely on a single PC's
+	// claim)
 	stable[pack]++
+
 	fmt.Println("Got request to mark", pack, "as stable")
+	// If two or more PC's claim that it is stable, then mark it
+	// as stable
 	if stable[pack] >= 2 {
 		get(pack).State = 0
 	}
 	saveToFile("database", "stable", "unstable")
-	printVars(database)
 }
 
+// Function called to mark a particular package as UNSTABLE (blocked)
 func mblock(w http.ResponseWriter, req *http.Request) {
+
+	// Get the appropriate package from the GET parameters
 	pack_b64 := req.URL.Query().Get("package")
+
+	// Base64 decode the package name
 	pack, _ := b64decode(pack_b64)
+
+	// Increment the unstable count (We can't rely on a single
+	// PC's claim)
 	unstable[pack]++
 	fmt.Println("Got request to mark", pack, "as unstable")
+
+	// If over 5 PC's claim a package to be unstable, mark it as
+	// such
 	if unstable[pack] >= 5 {
 		get(pack).State = 3
 	}
 	saveToFile("database", "stable", "unstable")
-	printVars(database)
 }
 
+// This function returns a list of all Leaf nodes which are marked
+// as "not yet stabilized" (state 1)
 func get_leaf_nodes(vertex *Node, visited map[string]bool) []*Node {
+	// Count of unstabilized dependencies of Node (This node would
+	// be a leaf node only if unstable_dep = 0)
 	unstable_dep := 0
+
+	// List of leaves in **this** subtree
 	leaves := make([]*Node, 0)
+
+	// If this package is itself not "unstabilized", then this
+	// subtree doesn't matter
 	if vertex.State != 1 {
 		return leaves
 	}
+
+	// Iterate over the dependencies of this node, and update
+	// unstable_dep. Also, recursively find out the leaf nodes in
+	// the subtree.
 	for _, dep := range vertex.Dep {
 		if dep.State == 1 {
 			unstable_dep++
@@ -390,15 +422,22 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool) []*Node {
 	return leaves
 }
 
+// This function handles the "need package" type of request
 func rpack(w http.ResponseWriter, req *http.Request) {
 	visited := make(map[string]bool)
 	leaves := make([]*Node, 0)
+
+	// Iterate over all Nodes and get a list of all
+	// non-stabilized leaf nodes
 	for cpv, vertex := range database {
 		if visited[cpv] {
 			continue
 		}
 		leaves = append(leaves, get_leaf_nodes(vertex, visited)...)
 	}
+
+	// If there are no such nodes, return none, else
+	// choose one at Random and return.
 	if len(leaves) == 0 {
 		io.WriteString(w, "None")
 	} else {
@@ -407,6 +446,8 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// This function recieves the build logs from the client.
+// Recieve -> Decode -> File Open -> File Write -> File Close
 func submitlog(w http.ResponseWriter, req *http.Request) {
 	log_b64 := req.URL.Query().Get("log")
 	log, _ := b64decode(log_b64)
@@ -423,6 +464,10 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	file.Write([]byte(log))
 }
 
+// Function to handle and route all requests.
+// The channel is used so that this can run on a
+// separate "goroutine" and still block the main
+// function when it is done
 func serverStart(c chan bool) {
 	r := mux.NewRouter()
 	r.HandleFunc("/sched-dep", dep)

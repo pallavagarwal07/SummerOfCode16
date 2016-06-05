@@ -2,10 +2,12 @@
 from __future__ import print_function
 import portage, subprocess, base64, os, re
 import solver, random, requests, sys, time
-import connection
+import helpers
 from subprocess import PIPE, Popen
 
+# This list will maintain a log of everything that happens
 log = []
+
 # Save a reference to the portage tree
 try:
     db = portage.db[portage.root]["porttree"].dbapi
@@ -15,9 +17,6 @@ except KeyError:
 # Query active USE flags for current environment
 use = portage.settings["USE"].split()
 
-# Keep a list of the packages that have now been stabilized
-stabilized = []
-
 # This functions returns the absolute value of the flag
 # thus -X would return X and X will also return X
 def abs_flag(flag):
@@ -25,9 +24,12 @@ def abs_flag(flag):
         return flag[1:]
     return flag
 
+# Returns an unpadded version of url safe base64 encoded string
 def b64encode(s):
     return base64.urlsafe_b64encode(s).replace('=', '')
 
+# This function uses the list "log", encodes it to base64 and
+# uploads it to the server for safekeeping
 def uploadLog():
     log_txt = "".join(log)
     b64log = b64encode(log_txt)
@@ -39,6 +41,7 @@ def uploadLog():
     response = requests.get("http://162.246.156.136/submit-log",
             params=payload)
 
+# Custom exit function that uploads the logs before exiting
 def _exit(n):
     uploadLog()
     exit(n)
@@ -145,21 +148,34 @@ def stabilize(cpv):
     for i, use_combo in enumerate(combos):
 
         print("Trial number:", i, "for the following USE flag combination:", use_combo)
+
+        # ret_deps is a list of CPVs of dependencies.
+        # my_env is the environment for which the pretend
+        # was run (same would be used to run command)
         ret_deps, my_env = dep_resolve(cpv, use_combo)
+
         print("Current package", cpv, "has the following dependencies:")
         print("\n".join(ret_deps))
 
+        # In case, a dependency is unstable, it would need to be stabilized
+        # first. In that case, there isn't any point with continuing this
+        # stabilization
         continue_run = True
+
+        # The list obtained also contains the package itself. Remove it
         deps = [ k for k in ret_deps if k != cpv ]
         for dep_cpv in deps:
             keywords = db.aux_get(dep_cpv, ["KEYWORDS"])[0].split()
+
+            # Check if the current status of the package is '~amd64' (Untested)
             if '~amd64' in keywords and dep_cpv != cpv:
-                print("Dependency", dep_cpv, "needs to be stabilized first.")
                 payload = {
                             'parent'     : b64encode(cpv),
                             'dependency' : b64encode(dep_cpv)
                           }
-
+                # Check what the server has to say about the package.
+                # The parent has to be sent too in case the package has
+                # been marked "fake - stabilized"
                 response = requests.get("http://162.246.156.136/sched-dep",
                                         params=payload)
 
@@ -167,14 +183,22 @@ def stabilize(cpv):
                     print("Stabilization server offline or unaccessible. Exiting")
                     _exit(0)
                 else:
-                    if response.text == "0": # Has already been stabilized
+
+                    # Has already been stabilized
+                    if response.text == "0":
+                        print("Dependency", dep_cpv, "is already stable")
                         pass
-                    elif response.text == "1": # To be stabilized
+
+                    # To be stabilized
+                    elif response.text == "1":
+                        print("Dependency", dep_cpv, "needs to be stabilized first.")
                         continue_run = False
-                    elif response.text == "3": # Should be blocked
-                        with open("/etc/portage/package.mask/stabilizer", "a") as f:
-                            f.write("\n="+dep_cpv)
+                    
+                    # Should be blocked (Tested, and fails)
+                    elif response.text == "3":
                         continue_run = False
+
+                    # In case something goes wrong on the server side
                     elif response.text == "-1":
                         print("Stabilization server returned error")
                         _exit(0)
@@ -186,56 +210,85 @@ def stabilize(cpv):
 
         args = ['emerge', '--autounmask-write', "--backtrack=50", "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
+
+        # This boolean flag takes care of running the emerge command a second
+        # time if the first run causes a change in config file changes due to
+        # autounmask-write
         retry = False
+
         for line in iter(unmask.stdout.readline, b""):
             log.append(line)
             print(line, end='')
+
+            # If changes have been written to config files, then this condition
+            # should return true. #TODO Find a better way to do this.
             if 'Autounmask changes' in line or re.search('needs? updating', line):
                retry = True
         unmask.wait()
         print("The return code was: ", unmask.returncode)
 
         if retry:
+            # Use etc-update to commit the automask changes to file
             yes = Popen(['yes'], stdout=PIPE)
             etc = Popen(['etc-update', '--automode', '-3'], stdin=yes.stdout,
                     stdout=PIPE )
+
+            # Save and log the output
             for line in iter(etc.stdout.readline, b""):
                 log.append(line)
                 print(line, end='')
             etc.wait()
             yes.terminate()
+
+            # Finally, run the build.
             emm = Popen(['emerge', "="+cpv], stdout=PIPE)
             for line in iter(emm.stdout.readline, b""):
                 log.append(line)
                 print(line, end='')
+
+            # If return code != 0 (i.e. The build failed)
             if emm.wait() != 0:
-                if connection.internet_working:
+
+                # Check to see if internet is working
+                if helpers.internet_working:
                     return emm.returncode
                 else:
                     print("Sorry, but you seem to have an internet failure")
                     _exit(1)
         else:
+            # Similarly for first case. If emerge failed, check if
+            # internet is working. If yes, then report the error
             if unmask.returncode != 0:
-                if connection.internet_working:
+                if helpers.internet_working:
                     return unmask.returncode
                 else:
                     print("Sorry, but you seem to have an internet failure")
                     _exit(1)
+    # If everything went fine, return successful
     return 0
 
 if __name__ == '__main__':
+    # Log the input parameters
     log.append("Command: " + " ".join(sys.argv) + "\n")
+
+    # If package is not specified, ask the server which package needs
+    # to be stabilized
     if len(sys.argv) < 2:
         print("No package specified. Asking the server for one")
         package_resp = requests.get("http://162.246.156.136/request-package")
+
         if package_resp.status_code != 200:
             print("Stabilization server offline or unaccessible. Exiting")
             _exit(0)
+        # Save whatever package name is returned from the server
         package = package_resp.text
         print("Got package:", package)
     else:
+        # If package name is specified, use that
         package = sys.argv[1]
 
+    # The package name provided may not be a valid cpv. So, use the
+    # portage API to find the most appropriate match
     try:
         token = db.xmatch("match-all", package)
     except portage.exception.InvalidAtom as e:
@@ -250,18 +303,29 @@ if __name__ == '__main__':
     if token == []:
         sys.stderr.write("Error: No Package Found\n")
         _exit(1)
+
+    # Remove git versions. They are not to be stabilized (ever)
     cpv = [k for k in token if '9999' not in k]
+
+    # Choose the latest unstabilized version
     if len(cpv) > 1:
         print("Multiple versions found, assuming latest version")
     cpv = cpv[-1]
 
+    # Try to stabilize the package and log the return code
     retcode = stabilize(cpv)
     log.append("Retcode: " + str(retcode) + "\n")
+
+    # Return code 0 means everything went fine and the package is
+    # stable
     if retcode == 0:
         requests.get("http://162.246.156.136/mark-stable",
                 params = {'package': b64encode(cpv)})
+
+    # Return code 999999 is a special code that means the package
+    # stabilization was ended because of unstabilized dependencies
+    # So, in cases OTHER THAN 999999, mark the package as blocked
     elif retcode != 999999:
         requests.get("http://162.246.156.136/mark-blocked",
                 params = {'package': b64encode(cpv)})
     _exit(0)
-
