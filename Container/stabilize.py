@@ -64,7 +64,7 @@ def dep_resolve(cpv, combo):
 
     # Let portage solve the build tree to find the best compatible
     # dependencies (highest possible version)
-    args = ['emerge', '--pretend', "="+cpv]
+    args = ['emerge', '-pUuD', "="+cpv]
     process = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
     deps = []
     for line in process.stdout:
@@ -208,7 +208,7 @@ def stabilize(cpv):
         if not continue_run:
             return 999999
 
-        args = ['emerge', '--autounmask-write', "--backtrack=50", "="+cpv]
+        args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
 
         # This boolean flag takes care of running the emerge command a second
@@ -241,7 +241,7 @@ def stabilize(cpv):
             yes.terminate()
 
             # Finally, run the build.
-            emm = Popen(['emerge', "="+cpv], stdout=PIPE)
+            emm = Popen(['emerge', '-UuD', "--backtrack=50", "="+cpv], stdout=PIPE)
             for line in iter(emm.stdout.readline, b""):
                 log.append(line)
                 print(line, end='')
