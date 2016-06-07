@@ -72,7 +72,7 @@ def dep_resolve(cpv, combo):
 
         # Retrieve the lines that show dependencies present
         # and append the required token to the dependency list
-        dep = re.findall('^\[ebuild.*\]\s*([^\s]+)', line)
+        dep = re.findall('^\[ebuild.*?\]\s*?([^\s]+)', line)
         if dep:
             deps.append(dep[0])
     return (deps, my_env)
