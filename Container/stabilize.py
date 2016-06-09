@@ -38,8 +38,8 @@ def uploadLog():
                   'filename': filename,
                   'log': b64log
               }
-    response = requests.get("http://162.246.156.136/submit-log",
-            params=payload)
+    response = requests.post("http://162.246.156.136/submit-log",
+            data=payload)
 
 # Custom exit function that uploads the logs before exiting
 def _exit(n):
