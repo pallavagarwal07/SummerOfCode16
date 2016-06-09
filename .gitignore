@@ -58,3 +58,8 @@ target/
 #Ipython Notebook
 .ipynb_checkpoints
 */*.nix
+Server/logs
+Server/database
+Server/packages
+Server/stable
+Server/unstable

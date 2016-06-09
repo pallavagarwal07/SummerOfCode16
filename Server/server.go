@@ -448,7 +448,8 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 // This function recieves the build logs from the client.
 // Recieve -> Decode -> File Open -> File Write -> File Close
 func submitlog(w http.ResponseWriter, req *http.Request) {
-	log_b64 := req.URL.Query().Get("log")
+	req.ParseForm()
+	log_b64 := req.Form().Get("log")
 	log, _ := b64decode(log_b64)
 	filename := "logs/" + req.URL.Query().Get("filename")
 

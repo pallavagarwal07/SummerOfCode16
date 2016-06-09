@@ -38,8 +38,8 @@ def uploadLog():
                   'filename': filename,
                   'log': b64log
               }
-    response = requests.get("http://162.246.156.136/submit-log",
-            params=payload)
+    response = requests.post("http://162.246.156.136/submit-log",
+            data=payload)
 
 # Custom exit function that uploads the logs before exiting
 def _exit(n):
@@ -64,7 +64,7 @@ def dep_resolve(cpv, combo):
 
     # Let portage solve the build tree to find the best compatible
     # dependencies (highest possible version)
-    args = ['emerge', '--pretend', "="+cpv]
+    args = ['emerge', '-pUuD', "="+cpv]
     process = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
     deps = []
     for line in process.stdout:
@@ -72,7 +72,7 @@ def dep_resolve(cpv, combo):
 
         # Retrieve the lines that show dependencies present
         # and append the required token to the dependency list
-        dep = re.findall('^\[ebuild.*\]\s*([^\s]+)', line)
+        dep = re.findall('^\[ebuild.*?\]\s*?([^\s]+)', line)
         if dep:
             deps.append(dep[0])
     return (deps, my_env)
@@ -208,7 +208,7 @@ def stabilize(cpv):
         if not continue_run:
             return 999999
 
-        args = ['emerge', '--autounmask-write', "--backtrack=50", "="+cpv]
+        args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
 
         # This boolean flag takes care of running the emerge command a second
@@ -241,7 +241,7 @@ def stabilize(cpv):
             yes.terminate()
 
             # Finally, run the build.
-            emm = Popen(['emerge', "="+cpv], stdout=PIPE)
+            emm = Popen(['emerge', '-UuD', "--backtrack=50", "="+cpv], stdout=PIPE)
             for line in iter(emm.stdout.readline, b""):
                 log.append(line)
                 print(line, end='')
