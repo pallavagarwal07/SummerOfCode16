@@ -449,9 +449,11 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 // Recieve -> Decode -> File Open -> File Write -> File Close
 func submitlog(w http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
-	log_b64 := req.Form().Get("log")
+	req.ParseMultipartForm(200000000)
+	log_b64 := req.Form.Get("log")
 	log, _ := b64decode(log_b64)
-	filename := "logs/" + req.URL.Query().Get("filename")
+	filename := "logs/" + req.Form.Get("filename")
+	fmt.Println("filename is:" + filename)
 
 	// Open file for writing.
 	// O_WRONLY : only for writing
