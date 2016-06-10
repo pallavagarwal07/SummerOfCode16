@@ -503,10 +503,39 @@ func serverStart(c chan bool) {
 	c <- true
 }
 
+type Params struct {
+	f1 string,
+	o1 string,
+	v1 string,
+	bug_status string,
+	include_fields []string
+}
+
+func bugzillaPolling(c chan bool) {
+	url := "https://bugs.gentoo.org/rest/bug"
+	for true {
+		payload := Params{
+			f1:	"days_elapsed",
+			o1: "lessthaneq",
+			v1: "30",
+			bug_status: "__open__",
+			include_fields: [6]string{ "id", "summary", "keywords",
+                                    "severity", "priority", "creation_time" }
+		}
+		response := interface{}
+		resp, err := napping.Get(url, &payload, &response, nil)
+		check(err)
+		printVars(response)
+		time.Sleep(time.Minute * 20)
+	}
+	c <- true
+}
+
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	c := make(chan bool)
 	go serverStart(c)
+	go bugzillaPolling(c)
 	database = make(map[string]*Node)
 	readFromFile("database", "stable", "unstable")
 	fmt.Println("Started server on port 80")
