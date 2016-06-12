@@ -2,11 +2,13 @@
 from __future__ import print_function
 import portage, subprocess, base64, os, re
 import solver, random, requests, sys, time
-import helpers
+import helpers, binascii
 from subprocess import PIPE, Popen
 
 # This list will maintain a log of everything that happens
 log = []
+
+uniq_code = ""
 
 # Save a reference to the portage tree
 try:
@@ -24,6 +26,9 @@ def abs_flag(flag):
         return flag[1:]
     return flag
 
+def get_hash():
+    return str(binascii.hexlify(os.urandom(4)).decode("utf-8"))
+
 # Returns an unpadded version of url safe base64 encoded string
 def b64encode(s):
     return base64.urlsafe_b64encode(s).replace('=', '')
@@ -36,7 +41,8 @@ def uploadLog():
     filename = time.strftime("%Y%m%d_%H%M%S")
     payload = {
                   'filename': filename,
-                  'log': b64log
+                  'log': b64log,
+                  'id': uniq_code
               }
     response = requests.post("http://162.246.156.136/submit-log",
             data=payload)
@@ -170,6 +176,7 @@ def stabilize(cpv):
             # Check if the current status of the package is '~amd64' (Untested)
             if '~amd64' in keywords and dep_cpv != cpv:
                 payload = {
+                            'id'         : uniq_code,
                             'parent'     : b64encode(cpv),
                             'dependency' : b64encode(dep_cpv)
                           }
@@ -193,7 +200,7 @@ def stabilize(cpv):
                     elif response.text == "1":
                         print("Dependency", dep_cpv, "needs to be stabilized first.")
                         continue_run = False
-                    
+
                     # Should be blocked (Tested, and fails)
                     elif response.text == "3":
                         continue_run = False
@@ -271,6 +278,9 @@ if __name__ == '__main__':
     # Log the input parameters
     log.append("Command: " + " ".join(sys.argv) + "\n")
 
+    global uniq_code
+    uniq_code = get_hash()
+
     # If package is not specified, ask the server which package needs
     # to be stabilized
     if len(sys.argv) < 2:
@@ -320,12 +330,12 @@ if __name__ == '__main__':
     # stable
     if retcode == 0:
         requests.get("http://162.246.156.136/mark-stable",
-                params = {'package': b64encode(cpv)})
+                params = {'package': b64encode(cpv), 'id': uniq_code})
 
     # Return code 999999 is a special code that means the package
     # stabilization was ended because of unstabilized dependencies
     # So, in cases OTHER THAN 999999, mark the package as blocked
     elif retcode != 999999:
         requests.get("http://162.246.156.136/mark-blocked",
-                params = {'package': b64encode(cpv)})
+                params = {'package': b64encode(cpv), 'id': uniq_code})
     _exit(0)

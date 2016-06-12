@@ -59,7 +59,4 @@ target/
 .ipynb_checkpoints
 */*.nix
 Server/logs
-Server/database
-Server/packages
-Server/stable
-Server/unstable
+Server/data

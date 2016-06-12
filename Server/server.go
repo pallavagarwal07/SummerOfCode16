@@ -7,10 +7,15 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/jmcvetta/napping"
+	"github.com/tj/go-dropbox"
 )
 
 // Instead of failing silently, crash
@@ -45,11 +50,18 @@ type Tmp struct {
 	State   int
 }
 
+type Pair struct {
+	Cpv   string
+	bugID int
+}
+
 // This database maintains a map from a packages
 // cpv to it's real (State !=2) node
 var database map[string]*Node
 var stable map[string]int
 var unstable map[string]int
+var priority []Pair
+var quick_ref map[string]Tmp
 
 // Helpful debugging function to pretty print all
 // variables passed to it (Deep print)
@@ -97,7 +109,12 @@ func add(pack *Node, hash map[*Node]int, lookup []*Node, index int) (int, []*Nod
 }
 
 // Read the package tree from a file
-func readFromFile(filename, stable_cpv, unstable_cpv string) {
+func readFromFile(folder string) {
+	filename := folder + "/database"
+	stable_fnm := folder + "/stable"
+	unstable_fnm := folder + "/unstable"
+	priority_fnm := folder + "/priority"
+
 	// Character buffer to store input (TODO: Use a better method
 	// in case the data doesn't fit in hardcoded size)
 	b1 := make([]byte, 5000000)
@@ -106,7 +123,7 @@ func readFromFile(filename, stable_cpv, unstable_cpv string) {
 	check(err)                     // Check for possible errors
 	defer file.Close()             // Close file when function returns
 
-	file1, err := os.Open(stable_cpv)        // Open file for reading
+	file1, err := os.Open(stable_fnm)        // Open file for reading
 	check(err)                               // Check for possible errors
 	defer file1.Close()                      // Close file when function returns
 	len1, err := file1.Read(b1)              // Read from the file
@@ -114,13 +131,21 @@ func readFromFile(filename, stable_cpv, unstable_cpv string) {
 	stable = make(map[string]int)            // Reset stable map
 	err = json.Unmarshal(b1[:len1], &stable) // Unmarshal string to stable map
 
-	file2, err := os.Open(unstable_cpv)        // Open file for reading
+	file2, err := os.Open(unstable_fnm)        // Open file for reading
 	check(err)                                 // Check for possible errors
 	defer file2.Close()                        // Close file when function returns
 	len2, err := file2.Read(b1)                // Read from the file
 	check(err)                                 // Again, check for errors :/
 	unstable = make(map[string]int)            // Reset stable map
 	err = json.Unmarshal(b1[:len2], &unstable) // Unmarshal string to stable map
+
+	file3, err := os.Open(priority_fnm)        // Open file for reading
+	check(err)                                 // Check for possible errors
+	defer file3.Close()                        // Close file when function returns
+	len3, err := file3.Read(b1)                // Read from the file
+	check(err)                                 // Again, check for errors :/
+	unstable = make(map[string]int)            // Reset stable map
+	err = json.Unmarshal(b1[:len3], &priority) // Unmarshal string to stable map
 
 	// Create a lookup from index to node address
 	lookup := make([]*Node, 0)
@@ -165,9 +190,58 @@ func readFromFile(filename, stable_cpv, unstable_cpv string) {
 	}
 }
 
-// Save the whole database to a file so that the data
-// can be restored later.
-func saveToFile(filename, stable_cpv, unstable_cpv string) {
+func saveAll(folder string) {
+	saveDatabase(folder)
+	saveStable(folder)
+	saveUnstable(folder)
+	savePriority(folder)
+}
+
+func saveStable(folder string) {
+	stable_fnm := folder + "/stable"
+
+	file1, err := os.OpenFile(stable_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	check(err)
+	defer file1.Close()
+
+	json1, err1 := json.Marshal(stable)
+	check(err1)
+	file1.Write(json1)
+	file1.Sync()
+
+}
+
+func saveUnstable(folder string) {
+	unstable_fnm := folder + "/unstable"
+
+	file1, err := os.OpenFile(unstable_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	check(err)
+	defer file1.Close()
+
+	json1, err1 := json.Marshal(unstable)
+	check(err1)
+	file1.Write(json1)
+	file1.Sync()
+
+}
+
+func savePriority(folder string) {
+	priority_fnm := folder + "/priority"
+
+	file1, err := os.OpenFile(priority_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	check(err)
+	defer file1.Close()
+
+	json1, err1 := json.Marshal(priority)
+	check(err1)
+	file1.Write(json1)
+	file1.Sync()
+
+}
+
+func saveDatabase(folder string) {
+	filename := folder + "/database"
+
 	// Current index for which lookup is being added
 	// hash: mapping from node address to their index (int)
 	// lookup: mapping from index to node address
@@ -186,12 +260,6 @@ func saveToFile(filename, stable_cpv, unstable_cpv string) {
 	// O_CREATE : create file if it doesn't exist
 	// O_TRUNC  : Remove whatever is in the file
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	check(err)
-	defer file.Close()
-	file1, err := os.OpenFile(stable_cpv, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	check(err)
-	defer file.Close()
-	file2, err := os.OpenFile(unstable_cpv, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	check(err)
 	defer file.Close()
 
@@ -224,16 +292,6 @@ func saveToFile(filename, stable_cpv, unstable_cpv string) {
 	file.Sync()
 	// Sync changes to the file. File will be autoclosed
 	// later due to defer file.Close()
-
-	json1, err1 := json.Marshal(stable)
-	check(err1)
-	file1.Write(json1)
-	file1.Sync()
-
-	json2, err2 := json.Marshal(unstable)
-	check(err2)
-	file2.Write(json2)
-	file2.Sync()
 }
 
 // Get the Node* object from database map
@@ -247,7 +305,7 @@ func get(cpv string) *Node {
 		node.State = 1              // Assume it to be unstable
 		database[cpv] = node        // Add it to the database
 	}
-	saveToFile("database", "stable", "unstable")
+	saveAll("data")
 	return database[cpv]
 }
 
@@ -295,7 +353,7 @@ func evaluate() {
 		traverse(vertex, ancestor, visited)
 		ancestor[cpv] = false
 	}
-	saveToFile("database", "stable", "unstable")
+	saveAll("data")
 	printVars(database)
 }
 
@@ -359,13 +417,16 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 	// claim)
 	stable[pack]++
 
+	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 0}
+	quick_ref[req.URL.Query().Get("id")] = immediate_node
+
 	fmt.Println("Got request to mark", pack, "as stable")
 	// If two or more PC's claim that it is stable, then mark it
 	// as stable
 	if stable[pack] >= 2 {
 		get(pack).State = 0
 	}
-	saveToFile("database", "stable", "unstable")
+	saveAll("data")
 }
 
 // Function called to mark a particular package as UNSTABLE (blocked)
@@ -382,12 +443,15 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 	unstable[pack]++
 	fmt.Println("Got request to mark", pack, "as unstable")
 
+	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 3}
+	quick_ref[req.URL.Query().Get("id")] = immediate_node
+
 	// If over 5 PC's claim a package to be unstable, mark it as
 	// such
 	if unstable[pack] >= 5 {
 		get(pack).State = 3
 	}
-	saveToFile("database", "stable", "unstable")
+	saveAll("data")
 }
 
 // This function returns a list of all Leaf nodes which are marked
@@ -426,22 +490,27 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 	visited := make(map[string]bool)
 	leaves := make([]*Node, 0)
 
-	// Iterate over all Nodes and get a list of all
-	// non-stabilized leaf nodes
-	for cpv, vertex := range database {
-		if visited[cpv] {
-			continue
+	if len(priority) == 0 {
+		// Iterate over all Nodes and get a list of all
+		// non-stabilized leaf nodes
+		for cpv, vertex := range database {
+			if visited[cpv] {
+				continue
+			}
+			leaves = append(leaves, get_leaf_nodes(vertex, visited)...)
 		}
-		leaves = append(leaves, get_leaf_nodes(vertex, visited)...)
-	}
 
-	// If there are no such nodes, return none, else
-	// choose one at Random and return.
-	if len(leaves) == 0 {
-		io.WriteString(w, "None")
+		// If there are no such nodes, return none, else
+		// choose one at Random and return.
+		if len(leaves) == 0 {
+			io.WriteString(w, "None")
+		} else {
+			rand_num := rand.Intn(len(leaves))
+			io.WriteString(w, leaves[rand_num].Cpv)
+		}
 	} else {
-		rand_num := rand.Intn(len(leaves))
-		io.WriteString(w, leaves[rand_num].Cpv)
+		io.WriteString(w, priority[0].Cpv)
+		priority = append(priority[1:], priority[0])
 	}
 }
 
@@ -451,6 +520,7 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
 	req.ParseMultipartForm(200000000)
 	log_b64 := req.Form.Get("log")
+	id := req.Form.Get("id")
 	log, _ := b64decode(log_b64)
 	filename := "logs/" + req.Form.Get("filename")
 	fmt.Println("filename is:" + filename)
@@ -464,6 +534,72 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	defer file.Close()
 
 	file.Write([]byte(log))
+
+	if node, present := quick_ref[id]; present {
+		state := node.State
+		cpv := node.Cpv
+		for _, p := range priority {
+			if p.Cpv == cpv {
+				addComment(p.bugID, filename, state)
+				break
+			}
+		}
+	}
+}
+
+func addComment(bugID int, filename string, state int) {
+	uri := "https://landfill.bugzilla.org/bugzilla-5.0-branch/rest/bug/"
+	auth_tk := "44fUT_rUcTMAAAAAAAACwh0I0b7H5pXKNv8UJLfxpa0k5UWx4GPyiu9c5UKRaZC5"
+	auth_key := "I9CjuxXrfz3HZYukXR0H353FxmznxulydmURXh1d"
+	uri = uri + fmt.Sprint(bugID) + "/comment" + "?api_key=" + auth_key
+	file, _ := os.Open(filename)
+
+	d := dropbox.New(dropbox.NewConfig(auth_tk))
+	_, err := d.Files.Upload(&dropbox.UploadInput{
+		Path:   filename,
+		Reader: file,
+		Mute:   true,
+		Mode:   "add",
+	})
+
+	if err != nil {
+		fmt.Println("Error occured during upload: ", err)
+	}
+
+	out, err := d.Sharing.CreateSharedLink(&dropbox.CreateSharedLinkInput{
+		Path:     filename,
+		ShortURL: false,
+	})
+
+	if err != nil {
+		fmt.Println("Error while retrieving URL: ", err)
+	}
+	url := out.URL
+	url = strings.Replace(url, "dl=0", "dl=1", -1)
+	//fmt.Println(url)
+	var result interface{}
+	var verdict string
+	if state == 3 {
+		verdict = "unstable"
+	} else {
+		verdict = "stable"
+	}
+	resp, err := napping.Post(uri, &map[string]string{
+		"comment": `
+Hi There!
+I am an automated build bot.
+I am here because you issued a stabilization request.
+On first impressions, it seems that the build is ` + verdict +
+			`.
+The relevant build logs can be found here:
+` + url + `
+
+If you think this build was triggered in error or want
+to suggest somthing, open an issue at 
+github.com/pallavagarwal07/SummerOfCode16`}, &result, nil)
+
+	printVars(resp.RawText(), err, result)
+
 }
 
 // Function to add package to the tree if it doesn't exist
@@ -504,29 +640,56 @@ func serverStart(c chan bool) {
 }
 
 type Params struct {
-	f1 string,
-	o1 string,
-	v1 string,
-	bug_status string,
-	include_fields []string
+	f1             string
+	o1             string
+	v1             string
+	bug_status     string
+	include_fields [6]string
+}
+
+func prioritize(bug map[string]interface{}) {
+	k, _ := regexp.Compile(`\w+[\w.+-]*/\w+[\w.+-]*-[0-9]+(\.[0-9]+)*[a-z]?((_alpha|_beta|_pre|_rc|_p)[0-9]?)*(-r[0-9]+)?`)
+	cpv := k.FindString(bug["summary"].(string))
+	if cpv == "" {
+		fmt.Println("Could not find a valid Package in summary", bug)
+	} else {
+		id := int(bug["id"].(float64))
+		priority = append(priority, Pair{cpv, id})
+		fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
+	}
+	savePriority("data")
 }
 
 func bugzillaPolling(c chan bool) {
-	url := "https://bugs.gentoo.org/rest/bug"
+	uri := "https://bugs.gentoo.org/rest/bug"
 	for true {
-		payload := Params{
-			f1:	"days_elapsed",
-			o1: "lessthaneq",
-			v1: "30",
-			bug_status: "__open__",
-			include_fields: [6]string{ "id", "summary", "keywords",
-                                    "severity", "priority", "creation_time" }
+		payload := url.Values{
+			"chfield":        []string{"[Bug creation]"},
+			"chfieldfrom":    []string{"-2h"},
+			"chfieldto":      []string{"Now"},
+			"f2":             []string{"keywords"},
+			"o2":             []string{"substring"},
+			"v2":             []string{"STABLEREQ"},
+			"bug_status":     []string{"__open__"},
+			"include_fields": []string{"id", "summary"},
 		}
-		response := interface{}
-		resp, err := napping.Get(url, &payload, &response, nil)
+		var response map[string][]map[string]interface{}
+		_, err := napping.Get(uri, &payload, &response, nil)
 		check(err)
-		printVars(response)
-		time.Sleep(time.Minute * 20)
+		fmt.Println(response)
+		for _, k := range response["bugs"] {
+			send := false
+			send = send || strings.Contains(k["summary"].(string), "stable")
+			send = send || strings.Contains(k["summary"].(string), "stabil")
+			send = send || strings.Contains(k["summary"].(string), "req")
+			if send {
+				prioritize(k)
+			} else {
+				fmt.Println("This doesn't seem like a stable request")
+				printVars(k)
+			}
+		}
+		time.Sleep(time.Minute * 119)
 	}
 	c <- true
 }
@@ -537,7 +700,9 @@ func main() {
 	go serverStart(c)
 	go bugzillaPolling(c)
 	database = make(map[string]*Node)
-	readFromFile("database", "stable", "unstable")
+	addComment(34094, "/home/pallav/SummerOfCode16/wrapper.sh", 0)
+	readFromFile("data")
+	saveAll("data")
 	fmt.Println("Started server on port 80")
 	<-c
 }
