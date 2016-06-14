@@ -1,4 +1,4 @@
-FROM pallavagarwal07/gentoo-minimal:latest
+FROM gentoo/stage3-amd64
 ADD *.py /root/
 ADD gentoo.conf /etc/portage/repos.conf/
 ADD minisat git /bin/
