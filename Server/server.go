@@ -538,9 +538,10 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	if node, present := quick_ref[id]; present {
 		state := node.State
 		cpv := node.Cpv
-		for _, p := range priority {
+		for i, p := range priority {
 			if p.Cpv == cpv {
 				addComment(p.bugID, filename, state)
+				priority = append(priority[:i], priority[i+1:]...)
 				break
 			}
 		}
@@ -548,11 +549,14 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 }
 
 func addComment(bugID int, filename string, state int) {
-	uri := "https://landfill.bugzilla.org/bugzilla-5.0-branch/rest/bug/"
+	uri := "https://bugs.gentoo.org/rest/bug/"
 	auth_tk := "44fUT_rUcTMAAAAAAAACwh0I0b7H5pXKNv8UJLfxpa0k5UWx4GPyiu9c5UKRaZC5"
-	auth_key := "I9CjuxXrfz3HZYukXR0H353FxmznxulydmURXh1d"
+	auth_key := "l07UhITjMlHXIUydO78RiAbftSa929bYdeOuF8t5"
 	uri = uri + fmt.Sprint(bugID) + "/comment" + "?api_key=" + auth_key
 	file, _ := os.Open(filename)
+	if filename[0] != '/' {
+		filename = "/" + filename
+	}
 
 	d := dropbox.New(dropbox.NewConfig(auth_tk))
 	_, err := d.Files.Upload(&dropbox.UploadInput{
@@ -576,7 +580,7 @@ func addComment(bugID int, filename string, state int) {
 	}
 	url := out.URL
 	url = strings.Replace(url, "dl=0", "dl=1", -1)
-	//fmt.Println(url)
+
 	var result interface{}
 	var verdict string
 	if state == 3 {
@@ -675,13 +679,23 @@ func bugzillaPolling(c chan bool) {
 		}
 		var response map[string][]map[string]interface{}
 		_, err := napping.Get(uri, &payload, &response, nil)
-		check(err)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
 		fmt.Println(response)
+
+		detect := func(s string) (ans bool) {
+			ans = false
+			s = strings.ToLower(s)
+			ans = ans || strings.Contains(s, "stable")
+			ans = ans || strings.Contains(s, "stabil")
+			ans = ans || strings.Contains(s, "req")
+			return ans
+		}
+
 		for _, k := range response["bugs"] {
-			send := false
-			send = send || strings.Contains(k["summary"].(string), "stable")
-			send = send || strings.Contains(k["summary"].(string), "stabil")
-			send = send || strings.Contains(k["summary"].(string), "req")
+			send := detect(k["summary"].(string))
 			if send {
 				prioritize(k)
 			} else {
@@ -699,8 +713,8 @@ func main() {
 	c := make(chan bool)
 	go serverStart(c)
 	go bugzillaPolling(c)
+	quick_ref = make(map[string]Tmp)
 	database = make(map[string]*Node)
-	addComment(34094, "/home/pallav/SummerOfCode16/wrapper.sh", 0)
 	readFromFile("data")
 	saveAll("data")
 	fmt.Println("Started server on port 80")
