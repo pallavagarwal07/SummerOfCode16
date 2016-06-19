@@ -5,6 +5,7 @@ ADD minisat git /bin/
 RUN mkdir /usr/portage; \
     emerge --sync; \
     eselect python set python2.7; \
+    echo 'MAKEOPTS="-j4"' >> /etc/portage/make.conf; \
     easy_install requests; \
     easy_install satispy; \
     easy_install pycosat; \
