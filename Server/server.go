@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -660,8 +661,27 @@ func prioritize(bug map[string]interface{}) {
 		id := int(bug["id"].(float64))
 		priority = append(priority, Pair{cpv, id})
 		fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
+		trigger(cpv)
 	}
 	savePriority("data")
+}
+
+func trigger(cpv string) {
+	f, err := os.OpenFile("../TravisTrigger/triggers", os.O_APPEND|os.O_WRONLY, 0644)
+	check(err)
+	f.WriteString(cpv + "\n")
+	f.Close()
+
+	cwd := os.Getenv("PWD")
+	command := `
+	cd ` + cwd + `/../TravisTrigger;
+	git commit -am 'Add new package for trigger'
+	git push origin master
+	`
+	_, err = exec.Command("su", "-c", command, "-", "pallav").CombinedOutput()
+	check(err)
+
+	fmt.Println("Triggered a Travis Build")
 }
 
 func bugzillaPolling(c chan bool) {

@@ -225,12 +225,12 @@ def stabilize(cpv):
 
         for line in iter(unmask.stdout.readline, b""):
             log.append(line)
-            print(line, end='')
-
             # If changes have been written to config files, then this condition
             # should return true. #TODO Find a better way to do this.
             if 'Autounmask changes' in line or re.search('needs? updating', line):
                retry = True
+            line = line[:77] + re.sub('.','.',line[77:80])
+            print(line, end='')
         unmask.wait()
         print("The return code was: ", unmask.returncode)
 
@@ -243,6 +243,7 @@ def stabilize(cpv):
             # Save and log the output
             for line in iter(etc.stdout.readline, b""):
                 log.append(line)
+                line = line[:77] + re.sub('.','.',line[77:80])
                 print(line, end='')
             etc.wait()
             yes.terminate()
@@ -251,6 +252,7 @@ def stabilize(cpv):
             emm = Popen(['emerge', '-UuD', "--backtrack=50", "="+cpv], stdout=PIPE)
             for line in iter(emm.stdout.readline, b""):
                 log.append(line)
+                line = line[:77] + re.sub('.','.',line[77:80])
                 print(line, end='')
 
             # If return code != 0 (i.e. The build failed)
