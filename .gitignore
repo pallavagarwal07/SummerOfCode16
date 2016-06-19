@@ -60,3 +60,4 @@ target/
 */*.nix
 Server/logs
 Server/data
+TravisTrigger
