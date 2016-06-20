@@ -65,8 +65,9 @@ def dep_resolve(cpv, combo):
 
     # Add the USE combination to the existing USE flags. Add to
     # the end so that they would override the existing flags
-    if "USE" in my_env: my_env["USE"] += " ".join(combo)
-    else: my_env["ACCEPT_KEYWORDS"] = portage.settings["USE"] + " " + " ".join(combo)
+    if "USE" in my_env: my_env["USE"] += " " + " ".join(combo)
+    else: my_env["USE"] = portage.settings["USE"] + " " + " ".join(combo)
+    my_env["USE"] += " test "
 
     # Let portage solve the build tree to find the best compatible
     # dependencies (highest possible version)
@@ -253,7 +254,7 @@ def stabilize(cpv):
             for line in iter(emm.stdout.readline, b""):
                 log.append(line)
                 line = line[:77] + re.sub('.','.',line[77:80])
-                print(line, end='')
+                print(line, end=('' if line[-1]=='\n' else '\n'))
 
             # If return code != 0 (i.e. The build failed)
             if emm.wait() != 0:

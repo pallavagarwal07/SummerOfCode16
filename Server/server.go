@@ -16,7 +16,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/jmcvetta/napping"
-	"github.com/tj/go-dropbox"
 )
 
 // Instead of failing silently, crash
@@ -595,7 +594,7 @@ Hi There!
 I am an automated build bot.
 I am here because you issued a stabilization request.
 On first impressions, it seems that the build is ` + verdict +
-			`.
+			` for amd64.
 The relevant build logs can be found here:
 ` + url + `
 

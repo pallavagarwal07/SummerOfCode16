@@ -2,8 +2,12 @@
 set -e
 
 echo ""
+
+# Default filename for the gentoo stabilization config file
 filename="$HOME/.gentoo-ci"
 
+# Print error with colors if on terminal and blankly if
+# piped. Use it as `error "This is an error."`
 error() {
     if [ -t 2 ]; then
         echo -e "\e[1;31mError:\e[0m" $@ 1>&2
@@ -13,6 +17,8 @@ error() {
     echo "" 1>&2
 }
 
+# Similar to error, use colors if on terminal and blankly
+# if piped. Use it as `warn "This is a warning."`
 warn() {
     if [ -t 2 ]; then
         echo -e "\e[1;33mImportant:\e[0m" $@
@@ -21,10 +27,12 @@ warn() {
     fi
 }
 
+# Normalize path replacing '~' with the value of $HOME
 normPath() {
     dr=`expand_tilde "$1"` && mkdir -p $dr && cd $dr && pwd -P
 }
 
+# normPath uses this function to expand path containing '~'
 expand_tilde()
 {
     case "$1" in
@@ -37,12 +45,13 @@ expand_tilde()
     esac
 }
 
-
+# Check if the script has been run as sudo
 if [[ $EUID -eq 0 ]]; then
     error "This script should not be run using sudo or as the root user"
     exit 1
 fi
 
+# Check if curent user is in docker group
 if grep -w docker <(id -Gn) >/dev/null 2>&1; then
     :
 else
@@ -51,6 +60,8 @@ else
     exit 1
 fi
 
+# Check if the config file exists. If it doesn't, walk the user
+# through the process of creating the config file with correct config
 if [ -e "$filename" ]; then
     :
 else
@@ -89,14 +100,19 @@ else
     fi
 fi
 
+# Make sure that the config file has only simple assignment values.
+# Anything else can cause dangerous operations and should be deleted
 if grep -Eqv '^#|^[^ ]*=[^\$; ]*[ 	]*$' "$filename"; then
     error "The config file is unclean. Trying to clean.."
     tmp="$(grep -E '^#|^[^ ]*=[^\$; ]*[ ]*$|^[ 	]*$' "$filename")"
     echo "$tmp" > "$filename"
 fi
 
+# Source the config file to retrieve the configuration values
 source "$filename"
 
+# Check if the name of docker executable is known. If yes, check if the
+# executable can be found in the path
 if [ -z "$docker" ]; then
     error "Config file faulty. Docker command not found in config file."
 else
@@ -106,6 +122,8 @@ else
     fi
 fi
 
+# Check if preference for cache is specified in config. If yes, check
+# if the corresponding folder is mentioned
 if [ -z "$cache" ]; then
     error "Config file faulty. Cache preference not found in config file."
 else
@@ -120,4 +138,3 @@ else
         $docker run -it pallavagarwal07/gentoo-stabilization
     fi
 fi
-
