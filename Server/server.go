@@ -190,50 +190,80 @@ func readFromFile(folder string) {
 	}
 }
 
+// Save all data structures to files in JSON format from where they
+// can be read and extracted next time
 func saveAll(folder string) {
+	// Database that contains the main package tree
 	saveDatabase(folder)
+
+	// List of packages that have been reported as stable
+	// by atleas one client
 	saveStable(folder)
+
+	// List of packages that have been reported as unstable
+	// by atleast one client
 	saveUnstable(folder)
+
+	// Priority List (packages that have recently got a STABLEREQ)
 	savePriority(folder)
 }
 
+// Function to store the stable list to a file
 func saveStable(folder string) {
+	// filename of the stable list
 	stable_fnm := folder + "/stable"
 
+	// Write Only, Create if doesn't exist, delete if it already has text
 	file1, err := os.OpenFile(stable_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	check(err)
 	defer file1.Close()
 
+	// Serialize the list of structs to a JSON string
 	json1, err1 := json.Marshal(stable)
+	// Panic if any error happens
 	check(err1)
+
+	// Write to file and save changes
 	file1.Write(json1)
 	file1.Sync()
 
 }
 
+// Function to store the unstable list to a file
 func saveUnstable(folder string) {
 	unstable_fnm := folder + "/unstable"
 
+	// Write Only, Create if doesn't exist, delete if it already has text
 	file1, err := os.OpenFile(unstable_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	check(err)
 	defer file1.Close()
 
+	// Serialize the list of structs to a JSON string
 	json1, err1 := json.Marshal(unstable)
+	// Panic if any error happens
 	check(err1)
+
+	// Write to file and save changes
 	file1.Write(json1)
 	file1.Sync()
 
 }
 
+// Function to store the priority list to a file
 func savePriority(folder string) {
 	priority_fnm := folder + "/priority"
 
+	// Write Only, Create if doesn't exist, delete if it already has text
 	file1, err := os.OpenFile(priority_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	check(err)
 	defer file1.Close()
 
+	// Serialize the list of structs to a JSON string
 	json1, err1 := json.Marshal(priority)
+	// Panic if any error happens
 	check(err1)
+
+	// Write to file and save changes
 	file1.Write(json1)
 	file1.Sync()
 
@@ -548,17 +578,30 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Post a comment to bugzilla with logs to a specific package
+// which is of state (stable/unstable)
 func addComment(bugID int, filename string, state int) {
+	// URL to the bugzilla rest api
 	uri := "https://bugs.gentoo.org/rest/bug/"
+
+	// Dropbox authentication token to upload files to stabilization folder
 	auth_tk := "44fUT_rUcTMAAAAAAAACwh0I0b7H5pXKNv8UJLfxpa0k5UWx4GPyiu9c5UKRaZC5"
+
+	// Gentoo bugzilla authentication key for rest api
+	// TODO: switch to environment variables
 	auth_key := "l07UhITjMlHXIUydO78RiAbftSa929bYdeOuF8t5"
+
+	// Create a url that authenticates using auth_key
 	uri = uri + fmt.Sprint(bugID) + "/comment" + "?api_key=" + auth_key
 	file, _ := os.Open(filename)
 	if filename[0] != '/' {
 		filename = "/" + filename
 	}
 
+	// Create a new dropbox configuration with the authentication token
 	d := dropbox.New(dropbox.NewConfig(auth_tk))
+	// Upload files to a prticular path, using the above log file as the
+	// Reader and using mode 'add' (for upload)
 	_, err := d.Files.Upload(&dropbox.UploadInput{
 		Path:   filename,
 		Reader: file,
@@ -566,28 +609,48 @@ func addComment(bugID int, filename string, state int) {
 		Mode:   "add",
 	})
 
+	// In case the upload failed, print error and return to calling function
 	if err != nil {
 		fmt.Println("Error occured during upload: ", err)
+		return
 	}
 
+	// Create a sharing link that would be available in the comment so that
+	// users can access the logs.
 	out, err := d.Sharing.CreateSharedLink(&dropbox.CreateSharedLinkInput{
 		Path:     filename,
 		ShortURL: false,
 	})
 
+	// If the URL can't be retrieved, again print error and return to calling
+	// function
 	if err != nil {
 		fmt.Println("Error while retrieving URL: ", err)
+		return
 	}
+
+	// The URL by default takes to a dropbox page. Replace download parameter
+	// with one to directly cause download when the link is clicked
 	url := out.URL
 	url = strings.Replace(url, "dl=0", "dl=1", -1)
 
+	// We don't know what the type of the response from the POST request is going
+	// to be. Thus we use a universal 'interface' type.
 	var result interface{}
+
+	// Verdict is whether the build was stable or not. 3 is for unstable while
+	// 1 is for stable
 	var verdict string
 	if state == 3 {
 		verdict = "unstable"
 	} else {
 		verdict = "stable"
 	}
+
+	// Make the post request (comment on bugzilla)
+	// Parameters are: URL
+	// 				   Map string -> string : 'comment' -> comment string
+	//                 Pointer to store result (interface)
 	resp, err := napping.Post(uri, &map[string]string{
 		"comment": `
 Hi There!
@@ -652,11 +715,20 @@ type Params struct {
 }
 
 func prioritize(bug map[string]interface{}) {
+	// This regex matches any valid package atom as defined by the gentoo guidelines
+	// Writing inside `backticks` means a RAW string. Equivalent of python's r'raw_string'
 	k, _ := regexp.Compile(`\w+[\w.+-]*/\w+[\w.+-]*-[0-9]+(\.[0-9]+)*[a-z]?((_alpha|_beta|_pre|_rc|_p)[0-9]?)*(-r[0-9]+)?`)
+
+	// Check if the title (summary) of the stablereq request contains a valid
+	// package item.
 	cpv := k.FindString(bug["summary"].(string))
+
 	if cpv == "" {
+		// If it doesn't, we cannot do anything about this package
 		fmt.Println("Could not find a valid Package in summary", bug)
 	} else {
+		// If it does, then we append the package to the priority list
+		// and trigger a TRAVIS build for that package
 		id := int(bug["id"].(float64))
 		priority = append(priority, Pair{cpv, id})
 		fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
@@ -665,27 +737,51 @@ func prioritize(bug map[string]interface{}) {
 	savePriority("data")
 }
 
+// This function triggers a TRAVIS build on request
 func trigger(cpv string) {
+	// There is another repository called TravisTrigger
+	// That repository is being monitored for commits by
+	// travis. this function creates a change in one of
+	// the files (/triggers) and commits the changes to
+	// the repository, hence triggering the build
 	f, err := os.OpenFile("../TravisTrigger/triggers", os.O_APPEND|os.O_WRONLY, 0644)
 	check(err)
 	f.WriteString(cpv + "\n")
 	f.Close()
 
+	// Create a string containing a path to that repository.
+	// Changes to that file were done above.
+	// Add and commit the file. And then push the repository
 	cwd := os.Getenv("PWD")
 	command := `
 	cd ` + cwd + `/../TravisTrigger;
 	git commit -am 'Add new package for trigger'
 	git push origin master
 	`
+
+	// The current script is being run as root. We don't want that to happen
+	// with the commits. Thus execute the command as user pallav, using the
+	// following syntax: `su -c "command" - pallav`
 	_, err = exec.Command("su", "-c", command, "-", "pallav").CombinedOutput()
 	check(err)
 
+	// Rejoice
 	fmt.Println("Triggered a Travis Build")
 }
 
+// This function periodically polls bugzilla to find out if there are any new
+// STABLEREQ requests.
 func bugzillaPolling(c chan bool) {
+	// URL to the REST api of bugzilla
 	uri := "https://bugs.gentoo.org/rest/bug"
+
+	// Since this has to poll every 2 hours, run this in an infinite loop
 	for true {
+		// Filteration system. We want bugs that are:
+		// 									1. Created from -2h to now
+		//									2. Have "STABLEREQ" in keywords
+		// 									3. are open
+		// 									4. Retrieve id and summary
 		payload := url.Values{
 			"chfield":        []string{"[Bug creation]"},
 			"chfieldfrom":    []string{"-2h"},
@@ -704,6 +800,8 @@ func bugzillaPolling(c chan bool) {
 		}
 		fmt.Println(response)
 
+		// Assume that the request is in fact a stabilization request
+		// if it contains words like stable or stabilize or request etc.
 		detect := func(s string) (ans bool) {
 			ans = false
 			s = strings.ToLower(s)
@@ -713,6 +811,8 @@ func bugzillaPolling(c chan bool) {
 			return ans
 		}
 
+		// for each bug, detect if it is a stabilization request, and if
+		// it is, then prioritize is by adding to priority queue
 		for _, k := range response["bugs"] {
 			send := detect(k["summary"].(string))
 			if send {
@@ -722,6 +822,8 @@ func bugzillaPolling(c chan bool) {
 				printVars(k)
 			}
 		}
+
+		// restart process every 2 hours (120 min)
 		time.Sleep(time.Minute * 119)
 	}
 	c <- true
