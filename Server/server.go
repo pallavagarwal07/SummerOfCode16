@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/jmcvetta/napping"
+	"github.com/tj/go-dropbox"
 )
 
 // Instead of failing silently, crash
@@ -717,7 +718,8 @@ type Params struct {
 func prioritize(bug map[string]interface{}) {
 	// This regex matches any valid package atom as defined by the gentoo guidelines
 	// Writing inside `backticks` means a RAW string. Equivalent of python's r'raw_string'
-	k, _ := regexp.Compile(`\w+[\w.+-]*/\w+[\w.+-]*-[0-9]+(\.[0-9]+)*[a-z]?((_alpha|_beta|_pre|_rc|_p)[0-9]?)*(-r[0-9]+)?`)
+	k, _ := regexp.Compile(`\w+[\w.+-]*/\w+[\w.+-]*-[0-9]+(\.[0-9]+)*[a-z]?` +
+		`((_alpha|_beta|_pre|_rc|_p)[0-9]?)*(-r[0-9]+)?`)
 
 	// Check if the title (summary) of the stablereq request contains a valid
 	// package item.
@@ -775,16 +777,16 @@ func bugzillaPolling(c chan bool) {
 	// URL to the REST api of bugzilla
 	uri := "https://bugs.gentoo.org/rest/bug"
 
-	// Since this has to poll every 2 hours, run this in an infinite loop
+	// Since this has to poll every 1 hours, run this in an infinite loop
 	for true {
 		// Filteration system. We want bugs that are:
-		// 									1. Created from -2h to now
+		// 									1. Created from -1h to now
 		//									2. Have "STABLEREQ" in keywords
 		// 									3. are open
 		// 									4. Retrieve id and summary
 		payload := url.Values{
 			"chfield":        []string{"[Bug creation]"},
-			"chfieldfrom":    []string{"-2h"},
+			"chfieldfrom":    []string{"-1h"},
 			"chfieldto":      []string{"Now"},
 			"f2":             []string{"keywords"},
 			"o2":             []string{"substring"},
@@ -823,8 +825,8 @@ func bugzillaPolling(c chan bool) {
 			}
 		}
 
-		// restart process every 2 hours (120 min)
-		time.Sleep(time.Minute * 119)
+		// restart process every 1 hours (60 min)
+		time.Sleep(time.Minute * 59)
 	}
 	c <- true
 }
