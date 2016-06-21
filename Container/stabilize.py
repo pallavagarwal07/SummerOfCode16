@@ -8,6 +8,7 @@ from subprocess import PIPE, Popen
 # This list will maintain a log of everything that happens
 log = []
 
+global uniq_code
 uniq_code = ""
 
 # Save a reference to the portage tree
@@ -51,6 +52,10 @@ def uploadLog():
 def _exit(n):
     uploadLog()
     exit(n)
+
+def _print(*params):
+    log.append(" ".join(params) + "\n")
+    print(*params)
 
 # For a given token, and a combination of USE flags,
 # This function retrieves the dependencies (highest
@@ -141,7 +146,7 @@ def get_use_combinations(use_flags, req_use):
 # This is the main controller function for the stabilization script.
 # Any package to be stabilized has to be passed to this function
 def stabilize(cpv):
-    print("Now stabilizing,", cpv)
+    _print("Now stabilizing,", cpv)
 
     # Retrieve the USE and REQUIRED_USE flags from the portage API
     use_flags, req_use = db.aux_get(cpv, ["IUSE", "REQUIRED_USE"])
@@ -154,15 +159,15 @@ def stabilize(cpv):
     # if it succeeds.
     for i, use_combo in enumerate(combos):
 
-        print("Trial number:", i, "for the following USE flag combination:", use_combo)
+        _print("Trial number:", i, "for the following USE flag combination:", use_combo)
 
         # ret_deps is a list of CPVs of dependencies.
         # my_env is the environment for which the pretend
         # was run (same would be used to run command)
         ret_deps, my_env = dep_resolve(cpv, use_combo)
 
-        print("Current package", cpv, "has the following dependencies:")
-        print("\n".join(ret_deps))
+        _print("Current package", cpv, "has the following dependencies:")
+        _print("\n".join(ret_deps))
 
         # In case, a dependency is unstable, it would need to be stabilized
         # first. In that case, there isn't any point with continuing this
@@ -188,18 +193,18 @@ def stabilize(cpv):
                                         params=payload)
 
                 if response.status_code != 200:
-                    print("Stabilization server offline or unaccessible. Exiting")
+                    _print("Stabilization server offline or unaccessible. Exiting")
                     _exit(0)
                 else:
 
                     # Has already been stabilized
                     if response.text == "0":
-                        print("Dependency", dep_cpv, "is already stable")
+                        _print("Dependency", dep_cpv, "is already stable")
                         pass
 
                     # To be stabilized
                     elif response.text == "1":
-                        print("Dependency", dep_cpv, "needs to be stabilized first.")
+                        _print("Dependency", dep_cpv, "needs to be stabilized first.")
                         continue_run = False
 
                     # Should be blocked (Tested, and fails)
@@ -208,13 +213,26 @@ def stabilize(cpv):
 
                     # In case something goes wrong on the server side
                     elif response.text == "-1":
-                        print("Stabilization server returned error")
+                        _print("Stabilization server returned error")
                         _exit(0)
             else:
-                print("Dependency", dep_cpv, "is already stable")
+                _print("Dependency", dep_cpv, "is already stable")
 
         if not continue_run:
             return 999999
+
+        args = ['emerge', '--info']
+        unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
+        log.append("-------------------------------------------------\n")
+        log.append("-------------------------------------------------\n")
+        for line in iter(unmask.stdout.readline, b""):
+            log.append(line)
+        log.append("-------------------------------------------------\n")
+        log.append("-------------------------------------------------\n")
+        for line in iter(unmask.stderr.readline, b""):
+            log.append(line)
+        log.append("-------------------------------------------------\n")
+        log.append("-------------------------------------------------\n")
 
         args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "="+cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
@@ -230,28 +248,48 @@ def stabilize(cpv):
             # should return true. #TODO Find a better way to do this.
             if 'Autounmask changes' in line or re.search('needs? updating', line):
                retry = True
-            line = line[:77] + re.sub('.','.',line[77:80])
+            line = line[:77] + re.sub('.', '.', line[77:80])
             print(line, end='')
+
+        for line in iter(unmask.stderr.readline, b""):
+            log.append(line)
+            if 'Autounmask changes' in line or re.search('needs? updating', line):
+               retry = True
+            line = line[:77] + re.sub('.', '.', line[77:80])
+            print(line, end='')
+
         unmask.wait()
-        print("The return code was: ", unmask.returncode)
+        _print("The return code was: ", unmask.returncode)
 
         if retry:
             # Use etc-update to commit the automask changes to file
             yes = Popen(['yes'], stdout=PIPE)
             etc = Popen(['etc-update', '--automode', '-3'], stdin=yes.stdout,
-                    stdout=PIPE )
+                    stdout=PIPE, stderr=PIPE)
 
             # Save and log the output
             for line in iter(etc.stdout.readline, b""):
                 log.append(line)
-                line = line[:77] + re.sub('.','.',line[77:80])
+                line = line[:77] + re.sub('.', '.', line[77:80])
+                print(line, end='')
+
+            # Save and log the output
+            for line in iter(etc.stderr.readline, b""):
+                log.append(line)
+                line = line[:77] + re.sub('.', '.', line[77:80])
                 print(line, end='')
             etc.wait()
             yes.terminate()
 
             # Finally, run the build.
-            emm = Popen(['emerge', '-UuD', "--backtrack=50", "="+cpv], stdout=PIPE)
+            emm = Popen(['emerge', '-UuD', "--backtrack=50", "="+cpv], stdout=PIPE,
+                    stderr=PIPE)
             for line in iter(emm.stdout.readline, b""):
+                log.append(line)
+                line = line[:77] + re.sub('.','.',line[77:80])
+                print(line, end=('' if line[-1]=='\n' else '\n'))
+
+            for line in iter(emm.stderr.readline, b""):
                 log.append(line)
                 line = line[:77] + re.sub('.','.',line[77:80])
                 print(line, end=('' if line[-1]=='\n' else '\n'))
@@ -263,7 +301,7 @@ def stabilize(cpv):
                 if helpers.internet_working:
                     return emm.returncode
                 else:
-                    print("Sorry, but you seem to have an internet failure")
+                    _print("Sorry, but you seem to have an internet failure")
                     _exit(1)
         else:
             # Similarly for first case. If emerge failed, check if
@@ -272,7 +310,7 @@ def stabilize(cpv):
                 if helpers.internet_working:
                     return unmask.returncode
                 else:
-                    print("Sorry, but you seem to have an internet failure")
+                    _print("Sorry, but you seem to have an internet failure")
                     _exit(1)
     # If everything went fine, return successful
     return 0
@@ -287,15 +325,15 @@ if __name__ == '__main__':
     # If package is not specified, ask the server which package needs
     # to be stabilized
     if len(sys.argv) < 2:
-        print("No package specified. Asking the server for one")
+        _print("No package specified. Asking the server for one")
         package_resp = requests.get("http://162.246.156.136/request-package")
 
         if package_resp.status_code != 200:
-            print("Stabilization server offline or unaccessible. Exiting")
+            _print("Stabilization server offline or unaccessible. Exiting")
             _exit(0)
         # Save whatever package name is returned from the server
         package = package_resp.text
-        print("Got package:", package)
+        _print("Got package:", package)
     else:
         # If package name is specified, use that
         package = sys.argv[1]
@@ -322,7 +360,7 @@ if __name__ == '__main__':
 
     # Choose the latest unstabilized version
     if len(cpv) > 1:
-        print("Multiple versions found, assuming latest version")
+        _print("Multiple versions found, assuming latest version")
     cpv = cpv[-1]
 
     # Try to stabilize the package and log the return code
