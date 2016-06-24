@@ -24,6 +24,17 @@ except KeyError:
 """Query active USE flags for current environment"""
 use = portage.settings["USE"].split()
 
+def uploadLog():
+    return
+    # response = requests.post("http://162.246.156.136/submit-log",
+                             # data=payload)
+
+# Custom exit function that uploads the logs before exiting
+
+
+def _exit(n):
+    uploadLog()
+    exit(n)
 
 def append_log(*args):
     """
@@ -92,6 +103,16 @@ def split_up(cpv):
 
     # Returns a few valid USE flag combinations to test the build
     combos = get_use_combinations(use_flags, req_use)
+
+    num_folders = len(combos)
+
+    for i in range(num_folders):
+        path = "/root/build/"+str(i)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        use_flags = " ".join(combos[i])
+        with open("path"+"/use", "w") as f:
+            f.write(use_flags)
 
 
 def get_use_combinations(use_flags, req_use):

