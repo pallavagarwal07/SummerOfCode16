@@ -1,8 +1,17 @@
 #!/usr/bin/env python
 from __future__ import print_function
-import portage, subprocess, base64, os, re
-import solver, random, requests, sys, time
-import helpers, binascii
+import portage
+import subprocess
+import base64
+import os
+import re
+import solver
+import random
+import requests
+import sys
+import time
+import helpers
+import binascii
 from subprocess import PIPE, Popen
 
 # This list will maintain a log of everything that happens
@@ -27,6 +36,7 @@ def abs_flag(flag):
         return flag[1:]
     return flag
 
+
 def get_hash():
     return str(binascii.hexlify(os.urandom(4)).decode("utf-8"))
 
@@ -36,47 +46,58 @@ def b64encode(s):
 
 # This function uses the list "log", encodes it to base64 and
 # uploads it to the server for safekeeping
+
+
 def uploadLog():
     log_txt = "".join(log)
     b64log = b64encode(log_txt)
     filename = time.strftime("%Y%m%d_%H%M%S")
     payload = {
-                  'filename': filename,
-                  'log': b64log,
-                  'id': uniq_code
-              }
+        'filename': filename,
+        'log': b64log,
+        'id': uniq_code
+    }
     response = requests.post("http://162.246.156.136/submit-log",
-            data=payload)
+                             data=payload)
 
 # Custom exit function that uploads the logs before exiting
+
+
 def _exit(n):
     uploadLog()
     exit(n)
 
+
 def _print(*params):
-    log.append(" ".join(params) + "\n")
+    log.append(" ".join(str(params)) + "\n")
     print(*params)
 
 # For a given token, and a combination of USE flags,
 # This function retrieves the dependencies (highest
 # version possible) and returns
+
+
 def dep_resolve(cpv, combo):
     # Create a copy of the environment
     my_env = os.environ.copy()
 
     # Add ~amd64 to the keywords ( to get the latest package )
-    if "ACCEPT_KEYWORDS" in my_env: my_env["ACCEPT_KEYWORDS"] += " ~amd64"
-    else: my_env["ACCEPT_KEYWORDS"] = "~amd64"
+    if "ACCEPT_KEYWORDS" in my_env:
+        my_env["ACCEPT_KEYWORDS"] += " ~amd64"
+    else:
+        my_env["ACCEPT_KEYWORDS"] = "~amd64"
 
     # Add the USE combination to the existing USE flags. Add to
     # the end so that they would override the existing flags
-    if "USE" in my_env: my_env["USE"] += " " + " ".join(combo)
-    else: my_env["USE"] = portage.settings["USE"] + " " + " ".join(combo)
+    if "USE" in my_env:
+        my_env["USE"] += " " + " ".join(combo)
+    else:
+        my_env["USE"] = portage.settings["USE"] + " " + " ".join(combo)
     my_env["USE"] += " test "
 
     # Let portage solve the build tree to find the best compatible
     # dependencies (highest possible version)
-    args = ['emerge', '-pUuD', "="+cpv]
+    args = ['emerge', '-pUuD', "=" + cpv]
     process = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
     deps = []
     for line in process.stdout:
@@ -89,62 +110,11 @@ def dep_resolve(cpv, combo):
             deps.append(dep[0])
     return (deps, my_env)
 
-# For given use flags and required use combination
-# It uses random methods to generate valid yet random
-# combinations of USE flags to build/test the package
-def get_use_combinations(use_flags, req_use):
-    # use_flags is a string by default
-    use_flags = [k.replace('-','').replace('+','') for k in use_flags.split()]
-
-    # List to store final generated USE flag combinations
-    final_combinations = []
-
-    # Absolute values of flags from the required use variable
-    req_flags = []
-
-    # Sat solver determines all valid combinations of req_use
-    req_solns = solver.main(req_use)
-
-    # Fill in req_flags from any of the solutions([] in case of
-    # no req_use variable)
-    for signed_flag in req_solns[0]:
-        req_flags.append(abs_flag(signed_flag))
-
-    # Sort all combinations on the number of enabled USE flags
-    for i, soln in enumerate(req_solns):
-        req_solns[i] = (sum(1 for k in soln if k[0] != '-'), soln)
-    req_solns.sort(key=lambda tup:tup[0])
-
-    # use_flags are those that weren't in req_flags, thus both
-    # sets are now mutually exclusive
-    req_flags = set(req_flags)
-    use_flags = set(use_flags) - req_flags
-
-    # Combination number one: Minimum possible USE flags enabled
-    tmp_use = ["-"+k for k in use_flags] + req_solns[0][1]
-    final_combinations.append(tmp_use)
-
-    # Combination number two: Maximum possible USE flags enabled
-    tmp_use = [k for k in use_flags] + req_solns[-1][1]
-    final_combinations.append(tmp_use)
-
-    # Combination number three: Random + Random
-    bias = random.randrange(0,10) # Number between 0 and 9
-    tmp_use = [("-" if random.randrange(0,10) <= bias else "") + k for k in use_flags]
-    tmp_use += req_solns[random.randrange(0, len(req_solns))][1]
-    final_combinations.append(tmp_use)
-
-    # Combination number three: Random + Random
-    bias = random.randrange(0,10) # Number between 0 and 9
-    tmp_use = [("-" if random.randrange(0,10) <= bias else "") + k for k in use_flags]
-    tmp_use += req_solns[random.randrange(0, len(req_solns))][1]
-    final_combinations.append(tmp_use)
-
-    # Remove repeated sets by using a set of sets
-    return set(frozenset(k) for k in final_combinations)
 
 # This is the main controller function for the stabilization script.
 # Any package to be stabilized has to be passed to this function
+
+
 def stabilize(cpv):
     _print("Now stabilizing,", cpv)
 
@@ -159,7 +129,8 @@ def stabilize(cpv):
     # if it succeeds.
     for i, use_combo in enumerate(combos):
 
-        _print("Trial number:", i, "for the following USE flag combination:", use_combo)
+        _print("Trial number:", i,
+               "for the following USE flag combination:", use_combo)
 
         # ret_deps is a list of CPVs of dependencies.
         # my_env is the environment for which the pretend
@@ -175,17 +146,17 @@ def stabilize(cpv):
         continue_run = True
 
         # The list obtained also contains the package itself. Remove it
-        deps = [ k for k in ret_deps if k != cpv ]
+        deps = [k for k in ret_deps if k != cpv]
         for dep_cpv in deps:
             keywords = db.aux_get(dep_cpv, ["KEYWORDS"])[0].split()
 
             # Check if the current status of the package is '~amd64' (Untested)
             if '~amd64' in keywords and dep_cpv != cpv:
                 payload = {
-                            'id'         : uniq_code,
-                            'parent'     : b64encode(cpv),
-                            'dependency' : b64encode(dep_cpv)
-                          }
+                    'id': uniq_code,
+                    'parent': b64encode(cpv),
+                    'dependency': b64encode(dep_cpv)
+                }
                 # Check what the server has to say about the package.
                 # The parent has to be sent too in case the package has
                 # been marked "fake - stabilized"
@@ -204,7 +175,8 @@ def stabilize(cpv):
 
                     # To be stabilized
                     elif response.text == "1":
-                        _print("Dependency", dep_cpv, "needs to be stabilized first.")
+                        _print("Dependency", dep_cpv,
+                               "needs to be stabilized first.")
                         continue_run = False
 
                     # Should be blocked (Tested, and fails)
@@ -234,7 +206,8 @@ def stabilize(cpv):
         log.append("-------------------------------------------------\n")
         log.append("-------------------------------------------------\n")
 
-        args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "="+cpv]
+        args = ['emerge', '-UuD', '--autounmask-write',
+                "--backtrack=50", "=" + cpv]
         unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
 
         # This boolean flag takes care of running the emerge command a second
@@ -247,14 +220,14 @@ def stabilize(cpv):
             # If changes have been written to config files, then this condition
             # should return true. #TODO Find a better way to do this.
             if 'Autounmask changes' in line or re.search('needs? updating', line):
-               retry = True
+                retry = True
             line = line[:77] + re.sub('.', '.', line[77:80])
             print(line, end='')
 
         for line in iter(unmask.stderr.readline, b""):
             log.append(line)
             if 'Autounmask changes' in line or re.search('needs? updating', line):
-               retry = True
+                retry = True
             line = line[:77] + re.sub('.', '.', line[77:80])
             print(line, end='')
 
@@ -264,8 +237,8 @@ def stabilize(cpv):
         if retry:
             # Use etc-update to commit the automask changes to file
             yes = Popen(['yes'], stdout=PIPE)
-            etc = Popen(['etc-update', '--automode', '-3'], stdin=yes.stdout,
-                    stdout=PIPE, stderr=PIPE)
+            etc = Popen(['etc-update', '--automode', '-3'],
+                        stdin=yes.stdout, stdout=PIPE, stderr=PIPE)
 
             # Save and log the output
             for line in iter(etc.stdout.readline, b""):
@@ -282,17 +255,17 @@ def stabilize(cpv):
             yes.terminate()
 
             # Finally, run the build.
-            emm = Popen(['emerge', '-UuD', "--backtrack=50", "="+cpv], stdout=PIPE,
-                    stderr=PIPE)
+            emm = Popen(['emerge', '-UuD', "--backtrack=50", "=" + cpv], stdout=PIPE,
+                        stderr=PIPE)
             for line in iter(emm.stdout.readline, b""):
                 log.append(line)
-                line = line[:77] + re.sub('.','.',line[77:80])
-                print(line, end=('' if line[-1]=='\n' else '\n'))
+                line = line[:77] + re.sub('.', '.', line[77:80])
+                print(line, end=('' if line[-1] == '\n' else '\n'))
 
             for line in iter(emm.stderr.readline, b""):
                 log.append(line)
-                line = line[:77] + re.sub('.','.',line[77:80])
-                print(line, end=('' if line[-1]=='\n' else '\n'))
+                line = line[:77] + re.sub('.', '.', line[77:80])
+                print(line, end=('' if line[-1] == '\n' else '\n'))
 
             # If return code != 0 (i.e. The build failed)
             if emm.wait() != 0:
@@ -343,10 +316,10 @@ if __name__ == '__main__':
     try:
         token = db.xmatch("match-all", package)
     except portage.exception.InvalidAtom as e:
-        sys.stderr.write("Error: Invalid token name: "+str(e).strip()+"\n")
+        sys.stderr.write("Error: Invalid token name: " + str(e).strip() + "\n")
         _exit(1)
     except portage.exception.AmbiguousPackageName as e:
-        sys.stderr.write("Error: Ambiguous token: "+str(e).strip()+"\n")
+        sys.stderr.write("Error: Ambiguous token: " + str(e).strip() + "\n")
         _exit(1)
 
     log.append("Package: " + package + "\n")
@@ -371,12 +344,12 @@ if __name__ == '__main__':
     # stable
     if retcode == 0:
         requests.get("http://162.246.156.136/mark-stable",
-                params = {'package': b64encode(cpv), 'id': uniq_code})
+                     params={'package': b64encode(cpv), 'id': uniq_code})
 
     # Return code 999999 is a special code that means the package
     # stabilization was ended because of unstabilized dependencies
     # So, in cases OTHER THAN 999999, mark the package as blocked
     elif retcode != 999999:
         requests.get("http://162.246.156.136/mark-blocked",
-                params = {'package': b64encode(cpv), 'id': uniq_code})
+                     params={'package': b64encode(cpv), 'id': uniq_code})
     _exit(0)
