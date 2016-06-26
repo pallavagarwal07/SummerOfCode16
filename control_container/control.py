@@ -103,6 +103,7 @@ def split_up(cpv):
 
     # Returns a few valid USE flag combinations to test the build
     combos = get_use_combinations(use_flags, req_use)
+    combos = list(combos)
 
     num_folders = len(combos)
 
