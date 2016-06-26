@@ -112,7 +112,7 @@ def split_up(cpv):
             os.makedirs(path)
         use_flags = " ".join(combos[i])
         with open("path"+"/use", "w") as f:
-            f.write(use_flags)
+            f.write("CPV="+cpv+"\n"+"FLAGS="+repr(use_flags))
 
 
 def get_use_combinations(use_flags, req_use):
