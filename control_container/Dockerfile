@@ -1,5 +1,4 @@
 FROM gentoo/stage3-amd64
-ADD *.py *.sh /root/
 RUN mkdir -p /root/build; \
     mkdir /usr/portage; \
     emerge-webrsync; \
@@ -21,5 +20,6 @@ RUN mkdir -p /root/build; \
     easy_install requests; \
     easy_install pycosat; \
     rm -rf /usr/portage;
+ADD *.py *.sh /root/
 ADD gentoo.conf /etc/portage/repos.conf/
 CMD ["/root/logger.sh"]
