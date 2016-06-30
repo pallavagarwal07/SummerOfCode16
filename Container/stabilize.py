@@ -71,10 +71,6 @@ def _print(*params):
     log.append(" ".join(str(params)) + "\n")
     print(*params)
 
-# For a given token, and a combination of USE flags,
-# This function retrieves the dependencies (highest
-# version possible) and returns
-
 
 def dep_resolve(cpv, combo):
     # Create a copy of the environment

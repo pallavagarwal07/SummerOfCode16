@@ -103,6 +103,7 @@ def split_up(cpv):
 
     # Returns a few valid USE flag combinations to test the build
     combos = get_use_combinations(use_flags, req_use)
+    combos = list(combos)
 
     num_folders = len(combos)
 
@@ -111,8 +112,8 @@ def split_up(cpv):
         if not os.path.exists(path):
             os.makedirs(path)
         use_flags = " ".join(combos[i])
-        with open("path"+"/use", "w") as f:
-            f.write("CPV="+cpv+"\n"+"FLAGS="+repr(use_flags))
+        with open(path+"/use", "w") as f:
+            f.write("export CPV="+cpv+"\n"+'export FLAGS="'+str(use_flags)+'"')
 
 
 def get_use_combinations(use_flags, req_use):
