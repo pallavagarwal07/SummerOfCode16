@@ -6,13 +6,20 @@ from satispy.solver import Minisat
 import pycosat
 
 
-# Separates out a single token from a string and returns
-# the two pieces. For eg.
-# if string is: "flag1 (abc cde)"
-# return ("flag1", "(abc cde)")
-# If string is: "(abc def (ghi jkl) (abc)) ^^ (abc)"
-# return ("(abc def (ghi jkl) (abc))", "^^ (abc)")
 def getToken(eq):
+    """
+    Separates out a single token from a string
+    and returns the two pieces. For eg.
+
+    if string is:
+        "flag1 (abc cde)"
+    return ("flag1", "(abc cde)")
+
+    If string is:
+        "(abc def (ghi jkl) (abc)) ^^ (abc)"
+    return ("(abc def (ghi jkl) (abc))", "^^ (abc)")
+
+    """
     eq = eq.strip()
     # Empty string case
     if eq == "": return None, eq
@@ -29,13 +36,13 @@ def getToken(eq):
             index += 1
             if brack == 0:
                 break
-        return ( eq[:index], eq[index:] )
+        return ( eq[:index].strip(), eq[index:].strip() )
     # If token is a flag name instead of bracket
     # It may also contain a '!' for a NOT
     elif re.match(r'^[\w!]', eq):
         token = re.findall(r'^[\w!]+', eq)[0]
         length = len(token)
-        return ( eq[:length], eq[length:] )
+        return ( eq[:length].strip(), eq[length:].strip() )
 
     # This should ideally never be encountered
     else:
@@ -68,9 +75,14 @@ def solveToken(eq):
     print("I failed: ", token, eq)
     exit(0)
 
-# This is the case of "|| (aa bb (cc dd))"
-# The input eq in above case would be: "(aa bb (cc dd))"
+
 def all_or(eq):
+    """
+    This is the case of:
+        "|| (aa bb (cc dd))"
+    The input eq in above case would be:
+        "(aa bb (cc dd))"
+    """
     # Remove the parentheses
     eq = eq.strip()[1:-1]
     # Create a blank Cnf object
@@ -85,13 +97,21 @@ def all_or(eq):
 
     return ret
 
-# This is the case of "^^ (aa bb (cc dd))"
-# The input eq in above case would be: "(aa bb (cc dd))"
-# Output would be corresponding to EXACTLY one out of
-# aa, bb, (cc dd)
 def all_xor(eq):
+    """
+    This is the case of:
+        "^^ (aa bb (cc dd))"
+    The input eq in above case would be:
+        "(aa bb (cc dd))"
+
+    Output would be corresponding to
+    EXACTLY one out of:
+        aa, bb, (cc dd)
+    """
+
     # Remove the parentheses
     eq = eq.strip()[1:-1]
+
     # List to hold all SOLVED tokens: [aa, bb, (cc & dd)]
     lst = []
 
@@ -101,6 +121,7 @@ def all_xor(eq):
         token, eq = solveToken(eq)
     
     ret = Cnf()
+
     # Best explained by example: for [a, b, c]
     # it would create
     # (a & -b & -c) | (-a & b & -c) | (-a & -b & c)
@@ -115,9 +136,19 @@ def all_xor(eq):
         ret = ret | tmp
     return ret
 
-# Almost same as all_xor
-# One extra case: ALL negation (NONE out of [a, b, c])
+
 def at_most(eq):
+    """
+    This is the case of:
+        "?? (aa bb (cc dd))"
+    The input eq in above case would be:
+        "(aa bb (cc dd))"
+
+    Output would be corresponding to
+    AT MOST one out of:
+        aa, bb, (cc dd)
+    """
+
     eq = eq.strip()[1:-1]
     lst = []
 
@@ -130,7 +161,7 @@ def at_most(eq):
     for a in lst:
         tmp = Cnf()
         for b in lst:
-            if a == b:
+            if str(a) == str(b):
                 tmp = tmp & b
             else:
                 tmp = tmp & (-b)
@@ -145,36 +176,39 @@ def at_most(eq):
 
     return ret
 
-# This is the primary solve function that is called
-# on the req_use string
-# The string can start with following:
-# 1. || or ?? or ^^:
-#
-#    i.   || :
-#             strip the first two characters,
-#             extract the next token and call all_or
-#    ii.  ^^ :
-#             strip the first two characters,
-#             extract the next token and call all_xor
-#    iii. ?? :
-#             strip the first two characters,
-#             extract the next token and call at_most
-#
-# 2. flag1? (abc def) (....)
-#     
-#     Beak into "flag1?" and "(abc def) (....)"
-#     Make flag1 into a variable var1
-#     Solve the first token "(abc def)" to var2
-#     Condition1 is var1 => var2 (implication)
-#     Condition2 is (...) solved by `solve` recursively
-#     Return AND of Condition 1 & 2
-# 3. normal_flag
-#
-#     Most probably shouldn't occur (if it's compulsory
-#     then it shouldn't be a USE flag). But if it does,
-#     convert to variable and & with recursively solved
-#     rest of the equation.
+
 def solve(eq):
+    """
+    This is the primary solve function that is called
+    on the req_use string
+    The string can start with following:
+    1. || or ?? or ^^:
+
+       i.   || :
+                strip the first two characters,
+                extract the next token and call all_or
+       ii.  ^^ :
+                strip the first two characters,
+                extract the next token and call all_xor
+       iii. ?? :
+                strip the first two characters,
+                extract the next token and call at_most
+
+    2. flag1? (abc def) (....)
+        
+        Beak into "flag1?" and "(abc def) (....)"
+        Make flag1 into a variable var1
+        Solve the first token "(abc def)" to var2
+        Condition1 is var1 => var2 (implication)
+        Condition2 is (...) solved by `solve` recursively
+        Return AND of Condition 1 & 2
+    3. normal_flag
+
+        Most probably shouldn't occur (if it's compulsory
+        then it shouldn't be a USE flag). But if it does,
+        convert to variable and & with recursively solved
+        rest of the equation.
+    """
     eq = eq.strip()
     if eq == '': return Cnf()
 
@@ -195,7 +229,7 @@ def solve(eq):
             result = at_most(var)
         return result & solve(eq)
 
-    op = re.findall(r'^[\w]+\s*\?', eq)
+    op = re.findall(r'^[\w]+\s*\?(?!\?)', eq)
     if op:
         op = op[0]
         eq = eq[len(op):]
@@ -203,11 +237,9 @@ def solve(eq):
         var2, eq = solveToken(eq)
         return (var1 >> var2) & solve(eq)
 
-    op = re.findall(r'^[\w]+', eq)
+    op = re.findall(r'^!?[\w]+', eq)
     if op:
-        op = op[0]
-        eq = eq[len(op):]
-        var = Variable(op.strip())
+        var, eq = solveToken(eq)
         return var & solve(eq)
 
         # This should ideally never be encountered
