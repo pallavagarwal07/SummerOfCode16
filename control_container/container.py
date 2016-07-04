@@ -9,6 +9,7 @@ import solver
 import random
 import requests
 import sys
+import socket
 import time
 import helpers
 import binascii
@@ -130,6 +131,16 @@ def dep_resolve(cpv, combo):
 
 
 if __name__ == "__main__":
+
+    serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    serversocket.bind(('localhost', 8080))
+    serversocket.listen(5)
+    connection, address = serversocket.accept()
+    buf = connection.recv(6400)
+    if buf == 'abort':
+        exit(0)
+    cpv, use = buf.split("[;;]")
+
     global folder_name
     trial = sys.argv[1]
     folder_name = "/root/build/" + trial + "/"
@@ -137,7 +148,7 @@ if __name__ == "__main__":
 
     assert cpv != None
 
-    use_combo = os.environ.get('FLAGS').split()
+    use_combo = use.split()
     assert use_combo != None
     
     # ret_deps is a list of CPVs of dependencies.

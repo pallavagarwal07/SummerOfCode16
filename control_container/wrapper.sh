@@ -142,36 +142,39 @@ else
     else
         rm -rf ${cachePath}/build
         mkdir -p ${cachePath}/portage ${cachePath}/build
-        $docker run -v "${cachePath}/portage":/usr/portage \
-            -v "${cachePath}/build":/root/build \
-            -it pallavagarwal07/gentoo-stabilization:split bash /root/logger.sh screenfetch
-        cd ${cachePath}/build
+        wget https://raw.githubusercontent.com/pallavagarwal07/SummerOfCode16/master/control_container/docker-compose.yml
+        docker-compose up
 
-        counter=0
-        success=0
-        for i in `ls -d */`; do
-            cd $i
-            source use
-            $docker run -v "${cachePath}/portage":/usr/portage \
-                -v "${cachePath}/build":/root/build \
-                -e CPV -e FLAGS \
-                -it pallavagarwal07/gentoo-stabilization:split python /root/container.py ${i}
-            if [[ $? -eq 0 ]]; then
-                cd ..
-                success=$(( success+1 ))
-                mv $i ${i}_success
-            else
-                cd ..
-                mv $i ${i}_failed
-            fi
-            counter=$(( counter+1 ))
-        done
-        if [[ $success -eq $counter ]]; then
-            success "All tests passed"
-        else
-            error "$(( counter-success )) out of $counter tests failed"
-        fi
-        echo "Uploading the logs...."
+        #$docker run -v "${cachePath}/portage":/usr/portage \
+            #-v "${cachePath}/build":/root/build \
+            #-it pallavagarwal07/gentoo-stabilization:split bash /root/logger.sh screenfetch
+        #cd ${cachePath}/build
+
+        #counter=0
+        #success=0
+        #for i in `ls -d */`; do
+            #cd $i
+            #source use
+            #$docker run -v "${cachePath}/portage":/usr/portage \
+                #-v "${cachePath}/build":/root/build \
+                #-e CPV -e FLAGS \
+                #-it pallavagarwal07/gentoo-stabilization:split python /root/container.py ${i}
+            #if [[ $? -eq 0 ]]; then
+                #cd ..
+                #success=$(( success+1 ))
+                #mv $i ${i}_success
+            #else
+                #cd ..
+                #mv $i ${i}_failed
+            #fi
+            #counter=$(( counter+1 ))
+        #done
+        #if [[ $success -eq $counter ]]; then
+            #success "All tests passed"
+        #else
+            #error "$(( counter-success )) out of $counter tests failed"
+        #fi
+        #echo "Uploading the logs...."
         name="$(date +%Y%m%d-%H%M%S).tar.gz"
         cd ${cachePath}
         tar czf $name build

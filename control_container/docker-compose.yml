@@ -1,0 +1,32 @@
+version: '2'
+services:
+    controller:
+        image: pallavagarwal07/gentoo-stabilization:split
+        command: bash /root/logger.sh screenfetch
+        volumes:
+            - ${cachePath}/portage:/usr/portage
+            - ${cachePath}/build:/root/build
+    build_one:
+        image: pallavagarwal07/gentoo-stabilization:split
+        command: python /root/container.py 1
+        volumes:
+            - ${cachePath}/portage:/usr/portage
+            - ${cachePath}/build:/root/build
+    build_two:
+        image: pallavagarwal07/gentoo-stabilization:split
+        command: python /root/container.py 2
+        volumes:
+            - ${cachePath}/portage:/usr/portage
+            - ${cachePath}/build:/root/build
+    build_three:
+        image: pallavagarwal07/gentoo-stabilization:split
+        command: python /root/container.py 3
+        volumes:
+            - ${cachePath}/portage:/usr/portage
+            - ${cachePath}/build:/root/build
+    build_four:
+        image: pallavagarwal07/gentoo-stabilization:split
+        command: python /root/container.py 4
+        volumes:
+            - ${cachePath}/portage:/usr/portage
+            - ${cachePath}/build:/root/build

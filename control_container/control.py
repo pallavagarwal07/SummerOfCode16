@@ -11,8 +11,8 @@ import requests
 import solver
 import subprocess
 import sys
+import socket
 import time
-
 global uniq_code
 
 """Save a reference to the portage tree"""
@@ -107,13 +107,23 @@ def split_up(cpv):
 
     num_folders = len(combos)
 
+    num_map = ['build_one', 'build_two', 'build_three', 'build_four']
+
     for i in range(num_folders):
         path = "/root/build/"+str(i)
         if not os.path.exists(path):
             os.makedirs(path)
         use_flags = " ".join(combos[i])
-        with open(path+"/use", "w") as f:
-            f.write("export CPV="+cpv+"\n"+'export FLAGS="'+str(use_flags)+'"')
+        clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        clientsocket.connect((num_map[i], 8080))
+        clientsocket.send(cpv+"[;;]"+str(use_flags))
+
+    for i in range(i, 4):
+        clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        clientsocket.connect((num_map[i], 8080))
+        clientsocket.send("abort")
+        # with open(path+"/use", "w") as f:
+            # f.write("export CPV="+cpv+"\n"+'export FLAGS="'+str(use_flags)+'"')
 
 
 def get_use_combinations(use_flags, req_use):
