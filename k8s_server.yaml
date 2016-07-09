@@ -10,17 +10,23 @@ spec:
               app: server
         spec:
             containers:
-            - name: gentoo
-              image: pallavagarwal07/testimages
+            - name: server
+              image: pallavagarwal07/gentoo-stabilization:server
               ports:
                   - containerPort: 80
               volumeMounts:
                   - name: shared-folder
                   mountPath: /data
             - name: flagSolver
-              image: pallavagarwal07/flagSolver
+              image: pallavagarwal07/gentoo-stabilization:solver
+              command: "python2 /root/discovery.py"
               ports:
                   - containerPort: 8081
+            - name: pretendBuild
+              image: pallavagarwal07/gentoo-stabilization:solver
+              command: "python2 /root/dependency.py"
+              ports:
+                  - containerPort: 8082
             volumes:
             - name: shared-folder
               hostPath:
