@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+    name: server
+spec:
+    replicas: 1
+    template:
+        metadata:
+            labels:
+              app: server
+        spec:
+            containers:
+            - name: gentoo
+              image: pallavagarwal07/testimages
+              ports:
+                  - containerPort: 80
+              volumeMounts:
+                  - name: shared-folder
+                  mountPath: /data
+            - name: flagSolver
+              image: pallavagarwal07/flagSolver
+              ports:
+                  - containerPort: 8081
+            volumes:
+            - name: shared-folder
+              hostPath:
+                path: /home/ubuntu/shared

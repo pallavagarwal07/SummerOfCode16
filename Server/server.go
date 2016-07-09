@@ -336,7 +336,7 @@ func get(cpv string) *Node {
 		node.State = 1              // Assume it to be unstable
 		database[cpv] = node        // Add it to the database
 	}
-	saveAll("data")
+	saveAll("/shared/data")
 	return database[cpv]
 }
 
@@ -384,7 +384,7 @@ func evaluate() {
 		traverse(vertex, ancestor, visited)
 		ancestor[cpv] = false
 	}
-	saveAll("data")
+	saveAll("/shared/data")
 	printVars(database)
 }
 
@@ -457,7 +457,7 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 	if stable[pack] >= 2 {
 		get(pack).State = 0
 	}
-	saveAll("data")
+	saveAll("/shared/data")
 }
 
 // Function called to mark a particular package as UNSTABLE (blocked)
@@ -482,7 +482,7 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 	if unstable[pack] >= 5 {
 		get(pack).State = 3
 	}
-	saveAll("data")
+	saveAll("/shared/data")
 }
 
 // This function returns a list of all Leaf nodes which are marked
@@ -553,7 +553,7 @@ func submitlog(w http.ResponseWriter, req *http.Request) {
 	log_b64 := req.Form.Get("log")
 	id := req.Form.Get("id")
 	log, _ := b64decode(log_b64)
-	filename := "logs/" + req.Form.Get("filename")
+	filename := "/shared/logs/" + req.Form.Get("filename")
 	fmt.Println("filename is:" + filename)
 
 	// Open file for writing.
@@ -736,7 +736,7 @@ func prioritize(bug map[string]interface{}) {
 		fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
 		trigger(cpv)
 	}
-	savePriority("data")
+	savePriority("/shared/data")
 }
 
 // This function triggers a TRAVIS build on request
@@ -835,11 +835,11 @@ func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	c := make(chan bool)
 	go serverStart(c)
-	go bugzillaPolling(c)
+	//go bugzillaPolling(c)
 	quick_ref = make(map[string]Tmp)
 	database = make(map[string]*Node)
-	readFromFile("data")
-	saveAll("data")
+	// readFromFile("/shared/data")
+	// saveAll("/shared/data")
 	fmt.Println("Started server on port 80")
 	<-c
 }
