@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -34,9 +35,9 @@ type Node struct {
 	Cpv string
 	Dep []*Node
 
-	UseFlags []Set
+	UseFlags  []Set
 	NumStable int
-	State int
+	State     int
 	// 0: Stable
 	// 1: Unstable
 	// 2: Acting Stable
@@ -48,11 +49,11 @@ type Node struct {
 // but dependencies are given in form of indices
 // of other nodes instead of pointers
 type Tmp struct {
-	Cpv     string
-	Indices []int
-	UseFlags []Set
+	Cpv       string
+	Indices   []int
+	UseFlags  []Set
 	NumStable int
-	State   int
+	State     int
 }
 
 type Pair struct {
@@ -555,7 +556,7 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 
 // Infinite loop that periodically computes the flag combinations
 // of different packages (by triggering them)
-func flagTrigger {
+func flagTrigger() {
 	for true {
 		visited := make(map[string]bool)
 		leaves := make([]*Node, 0)
@@ -574,8 +575,8 @@ func flagTrigger {
 			url := base64.URLEncoding.EncodeToString([]byte(leaves[rand_num].Cpv))
 			url = "http://localhost:8081/" + url
 			resp, err := http.Get(url)
-			text, err := ioutil.ReadAll(res.Body)
-			if text != "Ok!" {
+			text, err := ioutil.ReadAll(resp.Body)
+			if string(text) != "Ok!" {
 				fmt.Println(text)
 				panic(err)
 			}
@@ -584,7 +585,6 @@ func flagTrigger {
 		time.Sleep(time.Minute * 3)
 	}
 }
-
 
 // This function recieves the build logs from the client.
 // Recieve -> Decode -> File Open -> File Write -> File Close
@@ -699,7 +699,7 @@ func addComment(bugID int, filename string, state int) {
 		I am an automated build bot.
 		I am here because you issued a stabilization request.
 		On first impressions, it seems that the build is ` + verdict +
-		` for amd64.
+			` for amd64.
 		The relevant build logs can be found here:
 		` + url + `
 
@@ -707,196 +707,195 @@ func addComment(bugID int, filename string, state int) {
 		to suggest somthing, open an issue at 
 		github.com/pallavagarwal07/SummerOfCode16`}, &result, nil)
 
-		printVars(resp.RawText(), err, result)
+	printVars(resp.RawText(), err, result)
 
+}
+
+// Function to add package to the tree if it doesn't exist
+func addpack(w http.ResponseWriter, req *http.Request) {
+	pkg := req.URL.Query().Get("package")
+	fmt.Println(pkg)
+	get(pkg)
+	io.WriteString(w, "1")
+}
+
+func addCombo(w http.ResponseWriter, req *http.Request) {
+	pkg := req.URL.Query().Get("package")
+	flags := req.URL.Query().Get("flags")
+
+	combo := new(Set)
+	for _, flag := range strings.Split(flags, " ") {
+		combo.Add(flag)
 	}
 
-	// Function to add package to the tree if it doesn't exist
-	func addpack(w http.ResponseWriter, req *http.Request) {
-		pkg := req.URL.Query().Get("package")
-		fmt.Println(pkg)
-		get(pkg)
-		io.WriteString(w, "1")
+	database[pkg].UseFlags = append(database[pkg].UseFlags, *combo)
+	io.WriteString(w, "1")
+}
+
+// Function to handle and route all requests.
+// The channel is used so that this can run on a
+// separate "goroutine" and still block the main
+// function when it is done
+func serverStart(c chan bool) {
+	r := mux.NewRouter()
+	r.HandleFunc("/sched-dep", dep)
+	r.HandleFunc("/mark-stable", mstable)
+	r.HandleFunc("/mark-blocked", mblock)
+	r.HandleFunc("/request-package", rpack)
+	r.HandleFunc("/submit-log", submitlog)
+	r.HandleFunc("/add-package", addpack)
+	r.HandleFunc("/add-combo", addCombo)
+
+	// Custom http server
+	s := &http.Server{
+		Addr:           ":80",
+		Handler:        r,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
-
-	func addCombo(w http.ResponseWrite, req *http.Request) {
-		pkg := req.URL.Query().Get("package")
-		flags := req.URL.Query().Get("flags")
-
-		combo = new(Set)
-		for _, flag := range strings.Split(flags, " ") {
-			combo.add(flag)
-		}
-
-		database[pkg].UseFlags = append(database[pkg].UseFlags, combo)
-		io.WriteString(w, "1")
+	err := s.ListenAndServe()
+	if err != nil {
+		fmt.Printf("Server failed: ", err.Error())
 	}
+	c <- true
+}
 
-	// Function to handle and route all requests.
-	// The channel is used so that this can run on a
-	// separate "goroutine" and still block the main
-	// function when it is done
-	func serverStart(c chan bool) {
-		r := mux.NewRouter()
-		r.HandleFunc("/sched-dep", dep)
-		r.HandleFunc("/mark-stable", mstable)
-		r.HandleFunc("/mark-blocked", mblock)
-		r.HandleFunc("/request-package", rpack)
-		r.HandleFunc("/submit-log", submitlog)
-		r.HandleFunc("/add-package", addpack)
-		r.HandleFunc("/add-combo", addCombo)
+type Params struct {
+	f1             string
+	o1             string
+	v1             string
+	bug_status     string
+	include_fields [6]string
+}
 
-		// Custom http server
-		s := &http.Server{
-			Addr:           ":80",
-			Handler:        r,
-			ReadTimeout:    10 * time.Second,
-			WriteTimeout:   10 * time.Second,
-			MaxHeaderBytes: 1 << 20,
-		}
-
-		err := s.ListenAndServe()
-		if err != nil {
-			fmt.Printf("Server failed: ", err.Error())
-		}
-		c <- true
-	}
-
-	type Params struct {
-		f1             string
-		o1             string
-		v1             string
-		bug_status     string
-		include_fields [6]string
-	}
-
-	func prioritize(bug map[string]interface{}) {
-		// This regex matches any valid package atom as defined by the gentoo guidelines
-		// Writing inside `backticks` means a RAW string. Equivalent of python's r'raw_string'
-		k, _ := regexp.Compile(`\w+[\w.+-]*/\w+[\w.+-]*-[0-9]+(\.[0-9]+)*[a-z]?` +
+func prioritize(bug map[string]interface{}) {
+	// This regex matches any valid package atom as defined by the gentoo guidelines
+	// Writing inside `backticks` means a RAW string. Equivalent of python's r'raw_string'
+	k, _ := regexp.Compile(`\w+[\w.+-]*/\w+[\w.+-]*-[0-9]+(\.[0-9]+)*[a-z]?` +
 		`((_alpha|_beta|_pre|_rc|_p)[0-9]?)*(-r[0-9]+)?`)
 
-		// Check if the title (summary) of the stablereq request contains a valid
-		// package item.
-		cpv := k.FindString(bug["summary"].(string))
+	// Check if the title (summary) of the stablereq request contains a valid
+	// package item.
+	cpv := k.FindString(bug["summary"].(string))
 
-		if cpv == "" {
-			// If it doesn't, we cannot do anything about this package
-			fmt.Println("Could not find a valid Package in summary", bug)
-		} else {
-			// If it does, then we append the package to the priority list
-			// and trigger a TRAVIS build for that package
-			id := int(bug["id"].(float64))
-			priority = append(priority, Pair{cpv, id})
-			fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
-			trigger(cpv)
-		}
-		savePriority("/shared/data")
+	if cpv == "" {
+		// If it doesn't, we cannot do anything about this package
+		fmt.Println("Could not find a valid Package in summary", bug)
+	} else {
+		// If it does, then we append the package to the priority list
+		// and trigger a TRAVIS build for that package
+		id := int(bug["id"].(float64))
+		priority = append(priority, Pair{cpv, id})
+		fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
+		trigger(cpv)
 	}
+	savePriority("/shared/data")
+}
 
-	// This function triggers a TRAVIS build on request
-	func trigger(cpv string) {
-		// There is another repository called TravisTrigger
-		// That repository is being monitored for commits by
-		// travis. this function creates a change in one of
-		// the files (/triggers) and commits the changes to
-		// the repository, hence triggering the build
-		f, err := os.OpenFile("../TravisTrigger/triggers", os.O_APPEND|os.O_WRONLY, 0644)
-		check(err)
-		f.WriteString(cpv + "\n")
-		f.Close()
+// This function triggers a TRAVIS build on request
+func trigger(cpv string) {
+	// There is another repository called TravisTrigger
+	// That repository is being monitored for commits by
+	// travis. this function creates a change in one of
+	// the files (/triggers) and commits the changes to
+	// the repository, hence triggering the build
+	f, err := os.OpenFile("../TravisTrigger/triggers", os.O_APPEND|os.O_WRONLY, 0644)
+	check(err)
+	f.WriteString(cpv + "\n")
+	f.Close()
 
-		// Create a string containing a path to that repository.
-		// Changes to that file were done above.
-		// Add and commit the file. And then push the repository
-		cwd := os.Getenv("PWD")
-		command := `
+	// Create a string containing a path to that repository.
+	// Changes to that file were done above.
+	// Add and commit the file. And then push the repository
+	cwd := os.Getenv("PWD")
+	command := `
 		cd ` + cwd + `/../TravisTrigger;
 		git commit -am 'Add new package for trigger'
 		git push origin master
 		`
 
-		// The current script is being run as root. We don't want that to happen
-		// with the commits. Thus execute the command as user pallav, using the
-		// following syntax: `su -c "command" - pallav`
-		_, err = exec.Command("su", "-c", command, "-", "pallav").CombinedOutput()
-		check(err)
+	// The current script is being run as root. We don't want that to happen
+	// with the commits. Thus execute the command as user pallav, using the
+	// following syntax: `su -c "command" - pallav`
+	_, err = exec.Command("su", "-c", command, "-", "pallav").CombinedOutput()
+	check(err)
 
-		// Rejoice
-		fmt.Println("Triggered a Travis Build")
-	}
+	// Rejoice
+	fmt.Println("Triggered a Travis Build")
+}
 
-	// This function periodically polls bugzilla to find out if there are any new
-	// STABLEREQ requests.
-	func bugzillaPolling(c chan bool) {
-		// URL to the REST api of bugzilla
-		uri := "https://bugs.gentoo.org/rest/bug"
+// This function periodically polls bugzilla to find out if there are any new
+// STABLEREQ requests.
+func bugzillaPolling(c chan bool) {
+	// URL to the REST api of bugzilla
+	uri := "https://bugs.gentoo.org/rest/bug"
 
-		// Since this has to poll every 1 hours, run this in an infinite loop
-		for true {
-			// Filteration system. We want bugs that are:
-			// 									1. Created from -1h to now
-			//									2. Have "STABLEREQ" in keywords
-			// 									3. are open
-			// 									4. Retrieve id and summary
-			payload := url.Values{
-				"chfield":        []string{"[Bug creation]"},
-				"chfieldfrom":    []string{"-1h"},
-				"chfieldto":      []string{"Now"},
-				"f2":             []string{"keywords"},
-				"o2":             []string{"substring"},
-				"v2":             []string{"STABLEREQ"},
-				"bug_status":     []string{"__open__"},
-				"include_fields": []string{"id", "summary"},
-			}
-			var response map[string][]map[string]interface{}
-			_, err := napping.Get(uri, &payload, &response, nil)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			fmt.Println(response)
-
-			// Assume that the request is in fact a stabilization request
-			// if it contains words like stable or stabilize or request etc.
-			detect := func(s string) (ans bool) {
-				ans = false
-				s = strings.ToLower(s)
-				ans = ans || strings.Contains(s, "stable")
-				ans = ans || strings.Contains(s, "stabil")
-				ans = ans || strings.Contains(s, "req")
-				return ans
-			}
-
-			// for each bug, detect if it is a stabilization request, and if
-			// it is, then prioritize is by adding to priority queue
-			for _, k := range response["bugs"] {
-				send := detect(k["summary"].(string))
-				if send {
-					prioritize(k)
-				} else {
-					fmt.Println("This doesn't seem like a stable request")
-					printVars(k)
-				}
-			}
-
-			// restart process every 1 hours (60 min)
-			time.Sleep(time.Minute * 59)
+	// Since this has to poll every 1 hours, run this in an infinite loop
+	for true {
+		// Filteration system. We want bugs that are:
+		// 									1. Created from -1h to now
+		//									2. Have "STABLEREQ" in keywords
+		// 									3. are open
+		// 									4. Retrieve id and summary
+		payload := url.Values{
+			"chfield":        []string{"[Bug creation]"},
+			"chfieldfrom":    []string{"-1h"},
+			"chfieldto":      []string{"Now"},
+			"f2":             []string{"keywords"},
+			"o2":             []string{"substring"},
+			"v2":             []string{"STABLEREQ"},
+			"bug_status":     []string{"__open__"},
+			"include_fields": []string{"id", "summary"},
 		}
-		c <- true
-	}
+		var response map[string][]map[string]interface{}
+		_, err := napping.Get(uri, &payload, &response, nil)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		fmt.Println(response)
 
-	func main() {
-		rand.Seed(time.Now().UTC().UnixNano())
-		c := make(chan bool)
-		go serverStart(c)
-		go flagTrigger()
-		//go bugzillaPolling(c)
-		quick_ref = make(map[string]Tmp)
-		database = make(map[string]*Node)
-		// readFromFile("/shared/data")
-		// saveAll("/shared/data")
-		fmt.Println("Started server on port 80")
-		<-c
+		// Assume that the request is in fact a stabilization request
+		// if it contains words like stable or stabilize or request etc.
+		detect := func(s string) (ans bool) {
+			ans = false
+			s = strings.ToLower(s)
+			ans = ans || strings.Contains(s, "stable")
+			ans = ans || strings.Contains(s, "stabil")
+			ans = ans || strings.Contains(s, "req")
+			return ans
+		}
+
+		// for each bug, detect if it is a stabilization request, and if
+		// it is, then prioritize is by adding to priority queue
+		for _, k := range response["bugs"] {
+			send := detect(k["summary"].(string))
+			if send {
+				prioritize(k)
+			} else {
+				fmt.Println("This doesn't seem like a stable request")
+				printVars(k)
+			}
+		}
+
+		// restart process every 1 hours (60 min)
+		time.Sleep(time.Minute * 59)
 	}
+	c <- true
+}
+
+func main() {
+	rand.Seed(time.Now().UTC().UnixNano())
+	c := make(chan bool)
+	go serverStart(c)
+	go flagTrigger()
+	//go bugzillaPolling(c)
+	quick_ref = make(map[string]Tmp)
+	database = make(map[string]*Node)
+	// readFromFile("/shared/data")
+	// saveAll("/shared/data")
+	fmt.Println("Started server on port 80")
+	<-c
+}
