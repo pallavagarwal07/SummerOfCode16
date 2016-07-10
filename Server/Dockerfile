@@ -1,7 +1,7 @@
 FROM golang
 
 # Copy the local package files to the container's workspace.
-ADD *.go /go/src/gentoo-stable
+ADD *.go /go/src/gentoo-stable/
 
 # Build the outyet command inside the container.
 # (You may fetch or manage dependencies here,
