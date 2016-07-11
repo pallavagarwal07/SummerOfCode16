@@ -6,18 +6,20 @@ import os
 import re
 import sys
 import thread
-import portage
+# import portage
+import subprocess as sp
 
-"""Save a reference to the portage tree"""
-try:
-    db = portage.db[portage.root]["porttree"].dbapi
-except KeyError:
-    db = portage.db[portage.root]["vartree"].dbapi
+# sync_logs = sp.check_output(['emerge', '--sync'])
+# """Save a reference to the portage tree"""
+# try:
+    # db = portage.db[portage.root]["porttree"].dbapi
+# except KeyError:
+    # db = portage.db[portage.root]["vartree"].dbapi
 
-"""Query active USE flags for current environment"""
-use = portage.settings["USE"].split()
+# """Query active USE flags for current environment"""
+# use = portage.settings["USE"].split()
 
-PORT_NUMBER = 8081
+PORT_NUMBER = 7071
 
 
 def split_up(cpv):
@@ -40,7 +42,7 @@ def split_up(cpv):
 
         url = cpv + ";" + " ".join(combos)
 
-        encodedURL = "http://localhost:8082/" + base64.b64encode(url)
+        encodedURL = "http://localhost:7072/" + base64.b64encode(url)
         r2 = requests.get(encodedURL)
         assert r2.text == "Ok!"
     
@@ -118,9 +120,13 @@ class myHandler(BaseHTTPRequestHandler):
         self.wfile.write("Ok!")
         return
 try:
-    server = HTTPServer(('', PORT_NUMBER), myHandler)
-    print 'Started httpserver on port ' , PORT_NUMBER
+    print ('Starting httpserver on port ' + str(i))
+    sys.stdout.flush()
+    server = HTTPServer(('', i), myHandler)
+    print ('Started httpserver on port ' + str(i))
+    sys.stdout.flush()
     server.serve_forever()
 except KeyboardInterrupt:
-    print '^C received, shutting down the web server'
+    print ('^C received, shutting down the web server')
+    sys.stdout.flush()
     server.socket.close()

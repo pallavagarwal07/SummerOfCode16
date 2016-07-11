@@ -12,21 +12,23 @@ spec:
             containers:
             - name: server
               image: pallavagarwal07/gentoo-stabilization:server
+              imagePullPolicy: Always
               ports:
                   - containerPort: 80
               volumeMounts:
                   - name: shared-folder
-                  mountPath: /data
-            - name: flagSolver
+                    mountPath: /data
+            - name: flag-solver
               image: pallavagarwal07/gentoo-stabilization:solver
-              command: "python2 /root/discovery.py"
+              command: [ "python2", "/root/discovery.py" ]
               ports:
-                  - containerPort: 8081
-            - name: pretendBuild
+                  - containerPort: 7071
+            - name: pretend-build
               image: pallavagarwal07/gentoo-stabilization:solver
-              command: "python2 /root/dependency.py"
+              imagePullPolicy: Always
+              command: [ "python2", "/root/dependency.py" ]
               ports:
-                  - containerPort: 8082
+                  - containerPort: 7072
             volumes:
             - name: shared-folder
               hostPath:

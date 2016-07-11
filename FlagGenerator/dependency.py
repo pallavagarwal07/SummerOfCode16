@@ -7,7 +7,9 @@ import re
 import sys
 import thread
 import portage
+import subprocess as sp
 
+# sync_logs = sp.check_output(['emerge', '--sync'])
 
 """Save a reference to the portage tree"""
 try:
@@ -18,7 +20,7 @@ except KeyError:
 """Query active USE flags for current environment"""
 use = portage.settings["USE"].split()
 
-PORT_NUMBER = 8082
+PORT_NUMBER = 7072
 
 def dep_resolve(cpv, combo):
     # Create a copy of the environment
@@ -89,9 +91,13 @@ class myHandler(BaseHTTPRequestHandler):
         self.wfile.write("Ok!")
         return
 try:
+    print 'Starting httpserver on port ', PORT_NUMBER
+    sys.stdout.flush()
     server = HTTPServer(('', PORT_NUMBER), myHandler)
     print 'Started httpserver on port ' , PORT_NUMBER
+    sys.stdout.flush()
     server.serve_forever()
 except KeyboardInterrupt:
     print '^C received, shutting down the web server'
+    sys.stdout.flush()
     server.socket.close()

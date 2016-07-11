@@ -573,7 +573,7 @@ func flagTrigger() {
 		if len(leaves) != 0 {
 			rand_num := rand.Intn(len(leaves))
 			url := base64.URLEncoding.EncodeToString([]byte(leaves[rand_num].Cpv))
-			url = "http://localhost:8081/" + url
+			url = "http://localhost:7071/" + url
 			resp, err := http.Get(url)
 			text, err := ioutil.ReadAll(resp.Body)
 			if string(text) != "Ok!" {
