@@ -567,6 +567,9 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 // Infinite loop that periodically computes the flag combinations
 // of different packages (by triggering them)
 func flagTrigger() {
+
+	FLAG_SOLVER_IP := os.Getenv("ORCA_FLAG_SOLVER_SERVICE_HOST")
+
 	for true {
 		visited := make(map[string]bool)
 		leaves := make([]*Node, 0)
@@ -577,13 +580,12 @@ func flagTrigger() {
 			}
 			leaves = append(leaves, get_leaf_nodes(vertex, visited, true)...)
 		}
-
 		// If there are no such nodes, return none, else
 		// choose one at Random and return.
 		if len(leaves) != 0 {
 			rand_num := rand.Intn(len(leaves))
 			url := base64.URLEncoding.EncodeToString([]byte(leaves[rand_num].Cpv))
-			url = "http://localhost:7071/" + url
+			url = "http://" + FLAG_SOLVER_IP + "/" + url
 			resp, err := http.Get(url)
 			text, err := ioutil.ReadAll(resp.Body)
 			if string(text) != "Ok!" {
@@ -890,7 +892,7 @@ func bugzillaPolling(c chan bool) {
 			}
 		}
 
-		// restart process every 1 hours (60 min)
+		// restart process every 1 hour (60 min)
 		time.Sleep(time.Minute * 59)
 	}
 	c <- true

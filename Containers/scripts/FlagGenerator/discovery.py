@@ -19,7 +19,10 @@ import subprocess as sp
 # """Query active USE flags for current environment"""
 # use = portage.settings["USE"].split()
 
-PORT_NUMBER = 7071
+SERVER_IP = os.environ['ORCA_SERVER_SERVICE_HOST']
+DEP_SOLVER_IP = os.environ['ORCA_DEP_SOLVER_SERVICE_HOST']
+
+PORT_NUMBER = 80
 
 
 def split_up(cpv):
@@ -37,12 +40,12 @@ def split_up(cpv):
 
     for i in range(total):
         payload = {'package': cpv, 'flags': " ".join(combos)}
-        r = requests.get("http://localhost/add-combo", params=payload)
+        r = requests.get("http://"+SERVER_IP+"/add-combo", params=payload)
         assert r.text == "1"
 
         url = cpv + ";" + " ".join(combos)
 
-        encodedURL = "http://localhost:7072/" + base64.b64encode(url)
+        encodedURL = "http://"+DEP_SOLVER_IP+"/" + base64.b64encode(url)
         r2 = requests.get(encodedURL)
         assert r2.text == "Ok!"
     
@@ -120,6 +123,7 @@ class myHandler(BaseHTTPRequestHandler):
         self.wfile.write("Ok!")
         return
 try:
+    i = PORT_NUMBER
     print ('Starting httpserver on port ' + str(i))
     sys.stdout.flush()
     server = HTTPServer(('', i), myHandler)

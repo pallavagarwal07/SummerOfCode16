@@ -11,6 +11,8 @@ import subprocess as sp
 
 # sync_logs = sp.check_output(['emerge', '--sync'])
 
+SERVER_IP = os.environ['ORCA_SERVER_SERVICE_HOST']
+
 """Save a reference to the portage tree"""
 try:
     db = portage.db[portage.root]["porttree"].dbapi
@@ -20,7 +22,7 @@ except KeyError:
 """Query active USE flags for current environment"""
 use = portage.settings["USE"].split()
 
-PORT_NUMBER = 7072
+PORT_NUMBER = 80
 
 def dep_resolve(cpv, combo):
     # Create a copy of the environment
@@ -73,7 +75,7 @@ def build_pretend(cpv, flags):
             # Check what the server has to say about the package.
             # The parent has to be sent too in case the package has
             # been marked "fake - stabilized"
-            response = requests.get("http://localhost/sched-dep", params=payload)
+            response = requests.get("http://"+SERVER_IP+"/sched-dep", params=payload)
 
             assert response.status_code == 200
         else:

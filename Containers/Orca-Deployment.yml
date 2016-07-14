@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Service
+metadata:
+    name: orca-server
+    labels:
+        name: orca-server
+        app: orca-server
+spec:
+    type: NodePort
+    ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 32000
+    selector:
+        app: orca-server
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: orca-flag-solver
+    labels:
+        name: orca-flag-solver
+        app: orca-flag-solver
+spec:
+    ports:
+    - port: 7071
+      targetPort: 7071
+    selector:
+        app: orca-flag-solver
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: orca-dep-solver
+    labels:
+        name: orca-dep-solver
+        app: orca-dep-solver
+spec:
+    ports:
+    - port: 7072
+      targetPort: 7072
+    selector:
+        app: orca-dep-solver
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+    name: orca-server
+spec:
+    replicas: 1
+    template:
+        metadata:
+            labels:
+                app: orca-server
+        spec:
+            containers:
+              - name: gentoo-orca-server
+                image: pallavagarwal07/gentoo-stabilization:server
+                imagePullPolicy: Always
+                ports:
+                  - containerPort: 80
+                volumeMounts:
+                  - name: shared-folder
+                    mountPath: /data
+            volumes:
+              - name: shared-folder
+                hostPath:
+                  path: /home/ubuntu/shared
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+    name: orca-flag-solver
+spec:
+    replicas: 1
+    template:
+        metadata:
+            labels:
+                app: orca-flag-solver
+        spec:
+            containers:
+              - name: gentoo-orca-flag-solver
+                image: pallavagarwal07/gentoo-stabilization:solver
+                imagePullPolicy: Always
+                command: [ "python2", "/root/discovery.py" ]
+                ports:
+                    - containerPort: 7071
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+    name: orca-dep-solver
+spec:
+    replicas: 1
+    template:
+        metadata:
+            labels:
+                app: orca-dep-solver
+        spec:
+            containers:
+              - name: gentoo-orca-dep-solver
+                image: pallavagarwal07/gentoo-stabilization:solver
+                imagePullPolicy: Always
+                command: [ "python2", "/root/dependency.py" ]
+                ports:
+                    - containerPort: 7072
