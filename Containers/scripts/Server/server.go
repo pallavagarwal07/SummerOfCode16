@@ -17,7 +17,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/jmcvetta/napping"
-	"github.com/tj/go-dropbox"
 )
 
 // Instead of failing silently, crash
@@ -525,6 +524,15 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*N
 	return leaves
 }
 
+func getUseFlagsFromNode(node *Node) string {
+	keys := make([]string, len(node.UseFlags[node.NumStable].set))
+	str := ""
+	for k := range node.UseFlags[node.NumStable].set {
+		str += " " + k
+	}
+	return str
+}
+
 // This function handles the "need package" type of request
 func rpack(w http.ResponseWriter, req *http.Request) {
 	visited := make(map[string]bool)
@@ -546,10 +554,12 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 			io.WriteString(w, "None")
 		} else {
 			rand_num := rand.Intn(len(leaves))
-			io.WriteString(w, leaves[rand_num].Cpv)
+			io.WriteString(w,
+				leaves[rand_num].Cpv+"[;;]"+getUseFlagsFromNode(leaves[rand_num]))
 		}
 	} else {
-		io.WriteString(w, priority[0].Cpv)
+		io.WriteString(w, priority[0].Cpv+"[;;]"+
+			getUseFlagsFromNode(database[priority[0].Cpv]))
 		priority = append(priority[1:], priority[0])
 	}
 }
