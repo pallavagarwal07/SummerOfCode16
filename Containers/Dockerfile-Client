@@ -21,9 +21,10 @@ RUN mkdir -p /root/build; \
                     app-portage/portage-utils; \
     easy_install satispy; \
     easy_install pycosat; \
-    rm -rf /usr/portage;
+    cd /usr/portage; \
+    rm -rf `ls -w1 | grep -vP '^profiles'`;
 COPY scripts/ControlContainer/*.py scripts/ControlContainer/*.sh /root/
-COPY etc_portage/* /etc/portage/
+COPY etc_portage /etc/portage/
 CMD ["/root/logger.sh"]
 
 

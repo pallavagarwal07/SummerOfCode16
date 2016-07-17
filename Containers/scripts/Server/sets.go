@@ -3,21 +3,27 @@ package main
 import "reflect"
 
 type Set struct {
-	set map[string]bool
+	MapSet map[string]bool
 }
 
-func (set *Set) Add(i string) bool {
-	_, found := set.set[i]
-	set.set[i] = true
+func (MapSet *Set) Add(i string) bool {
+	_, found := MapSet.MapSet[i]
+	MapSet.MapSet[i] = true
 	return !found //False if it existed already
 }
 
-func (set *Set) Delete(i string) {
-	if _, found := set.set[i]; found {
-		delete(set.set, i)
+func (MapSet *Set) Delete(i string) {
+	if _, found := MapSet.MapSet[i]; found {
+		delete(MapSet.MapSet, i)
 	}
 }
 
-func (set *Set) Equal(set2 *Set) bool {
-	return reflect.DeepEqual(set, set2)
+func (MapSet *Set) Equal(set2 *Set) bool {
+	return reflect.DeepEqual(MapSet, set2)
+}
+
+func newSet() *Set {
+	s := new(Set)
+	s.MapSet = make(map[string]bool)
+	return s
 }

@@ -1,28 +1,40 @@
 #!/usr/bin/env python2
 from BaseHTTPServer import BaseHTTPRequestHandler,HTTPServer
 from base64 import urlsafe_b64decode as b64decode
-from urlparse import urlparse
 import os
 import re
 import sys
 import thread
-# import portage
+import requests
+import random
+import base64
+import solver
+import portage
 import subprocess as sp
 
 # sync_logs = sp.check_output(['emerge', '--sync'])
-# """Save a reference to the portage tree"""
-# try:
-    # db = portage.db[portage.root]["porttree"].dbapi
-# except KeyError:
-    # db = portage.db[portage.root]["vartree"].dbapi
+"""Save a reference to the portage tree"""
+try:
+    db = portage.db[portage.root]["porttree"].dbapi
+except KeyError:
+    db = portage.db[portage.root]["vartree"].dbapi
 
-# """Query active USE flags for current environment"""
-# use = portage.settings["USE"].split()
+"""Query active USE flags for current environment"""
+use = portage.settings["USE"].split()
 
 SERVER_IP = os.environ['ORCA_SERVER_SERVICE_HOST']
 DEP_SOLVER_IP = os.environ['ORCA_DEP_SOLVER_SERVICE_HOST']
 
 PORT_NUMBER = 80
+
+
+def abs_flag(flag):
+    """
+    This functions returns the absolute value of the flag
+    """
+    if flag[0] == '-':
+        return flag[1:]
+    return flag
 
 
 def split_up(cpv):
@@ -39,12 +51,15 @@ def split_up(cpv):
     total = len(combos)
 
     for i in range(total):
-        payload = {'package': cpv, 'flags': " ".join(combos)}
+        combo = list(combos[i])
+        url = cpv + ";" + " ".join(combo)
+        payload = {'package': cpv, 'flags': " ".join(combo)}
+
+        print "Sending a request to dep solver for", url
         r = requests.get("http://"+SERVER_IP+"/add-combo", params=payload)
         assert r.text == "1"
 
-        url = cpv + ";" + " ".join(combos)
-
+        print "Sent a request to dep solver for", url
         encodedURL = "http://"+DEP_SOLVER_IP+"/" + base64.b64encode(url)
         r2 = requests.get(encodedURL)
         assert r2.text == "Ok!"
@@ -119,6 +134,7 @@ class myHandler(BaseHTTPRequestHandler):
         self.end_headers()
         path = b64pad(self.path[1:])
         cpv = b64decode(path)
+        print "Discovery got a request for finding flags of", cpv
         thread.start_new_thread(split_up,(cpv,))
         self.wfile.write("Ok!")
         return

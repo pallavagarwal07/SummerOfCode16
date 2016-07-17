@@ -3,20 +3,22 @@ RUN mkdir /usr/portage; \
     emerge-webrsync; \
     eselect python set python2.7; \
     echo 'MAKEOPTS="-j4"' >> /etc/portage/make.conf; \
-    USE="-*" emerge --autounmask-write \
-                    dev-python/numpy \
-                    dev-python/requests \
-                    sci-mathematics/minisat \
+    echo 'PYTHON_TARGETS="python2_7"' >> /etc/portage/make.conf; \
+    emerge --autounmask-write dev-python/numpy \
+                              dev-python/requests \
+                              dev-vcs/git \
+                              sci-mathematics/minisat; \
     yes | etc-update --automode -3; \
-    USE="-*" emerge --autounmask-write \
-                    dev-python/numpy \
-                    dev-python/requests \
-                    sci-mathematics/minisat \
+    emerge --autounmask-write dev-python/numpy \
+                              dev-python/requests \
+                              dev-vcs/git \
+                              sci-mathematics/minisat; \
     easy_install satispy; \
     easy_install pycosat; \
-    rm -rf /usr/portage;
+    cd /usr/portage; \
+    rm -rf `ls -1A`;
 COPY scripts/FlagGenerator/* /root/
-COPY etc_portage/* /etc/portage/
+COPY etc_portage /etc/portage/
 
 
 # vim: ft=dockerfile :

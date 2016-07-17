@@ -24,8 +24,8 @@ metadata:
         app: orca-flag-solver
 spec:
     ports:
-    - port: 7071
-      targetPort: 7071
+    - port: 80
+      targetPort: 80
     selector:
         app: orca-flag-solver
 
@@ -39,8 +39,8 @@ metadata:
         app: orca-dep-solver
 spec:
     ports:
-    - port: 7072
-      targetPort: 7072
+    - port: 80
+      targetPort: 80
     selector:
         app: orca-dep-solver
 
@@ -63,12 +63,12 @@ spec:
                 ports:
                   - containerPort: 80
                 volumeMounts:
-                  - name: shared-folder
+                  - name: data-folder
                     mountPath: /data
             volumes:
-              - name: shared-folder
+              - name: data-folder
                 hostPath:
-                  path: /home/ubuntu/shared
+                  path: /home/ubuntu/shared/data
 
 ---
 apiVersion: extensions/v1beta1
@@ -88,7 +88,19 @@ spec:
                 imagePullPolicy: Always
                 command: [ "python2", "/root/discovery.py" ]
                 ports:
-                    - containerPort: 7071
+                    - containerPort: 80
+                volumeMounts:
+                  - name: data-folder
+                    mountPath: /data
+                  - name: portage-folder
+                    mountPath: /usr/portage
+            volumes:
+              - name: data-folder
+                hostPath:
+                  path: /home/ubuntu/shared/data
+              - name: portage-folder
+                hostPath:
+                  path: /home/ubuntu/shared/portage
 
 ---
 apiVersion: extensions/v1beta1
@@ -108,4 +120,16 @@ spec:
                 imagePullPolicy: Always
                 command: [ "python2", "/root/dependency.py" ]
                 ports:
-                    - containerPort: 7072
+                    - containerPort: 80
+                volumeMounts:
+                  - name: data-folder
+                    mountPath: /data
+                  - name: portage-folder
+                    mountPath: /usr/portage
+            volumes:
+              - name: data-folder
+                hostPath:
+                  path: /home/ubuntu/shared/data
+              - name: portage-folder
+                hostPath:
+                  path: /home/ubuntu/shared/portage

@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/jmcvetta/napping"
+	"github.com/tj/go-dropbox"
 )
 
 // Instead of failing silently, crash
@@ -340,7 +341,7 @@ func get(cpv string) *Node {
 		node.State = 1              // Assume it to be unstable
 		database[cpv] = node        // Add it to the database
 	}
-	saveAll("/shared/data")
+	//saveAll("/shared/data")
 	return database[cpv]
 }
 
@@ -365,7 +366,7 @@ func traverse(vertex *Node, ancestor, visited map[string]bool) {
 			node.State = 2
 			vertex.Dep[index] = node
 		} else {
-			// else, mark current as ancestor, travers child
+			// else, mark current as ancestor, traverse child
 			// and unmark as ancestor
 			ancestor[child.Cpv] = true
 			traverse(child, ancestor, visited)
@@ -388,8 +389,7 @@ func evaluate() {
 		traverse(vertex, ancestor, visited)
 		ancestor[cpv] = false
 	}
-	saveAll("/shared/data")
-	printVars(database)
+	//saveAll("/shared/data")
 }
 
 // Simple function to decode base64 and return string
@@ -406,6 +406,8 @@ func dep(w http.ResponseWriter, req *http.Request) {
 	parent, err1 := b64decode(parent_b64)
 	depend_b64 := req.URL.Query().Get("dependency")
 	depend, err2 := b64decode(depend_b64)
+
+	fmt.Println("Parent-Dependency combo", parent, "->", depend)
 
 	// Abort if any error has occured.
 	// Get the nodes for both parent and child
@@ -424,6 +426,7 @@ func dep(w http.ResponseWriter, req *http.Request) {
 		// If not, then add it and reavaluate the tree
 		if !flag {
 			pnode.Dep = append(pnode.Dep, cnode)
+			fmt.Println("Added", pnode.Cpv, "->", cnode.Cpv)
 			evaluate()
 		}
 		for _, d := range pnode.Dep {
@@ -461,7 +464,7 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 	if stable[pack] >= 2 {
 		get(pack).State = 0
 	}
-	saveAll("/shared/data")
+	//saveAll("/shared/data")
 }
 
 // Function called to mark a particular package as UNSTABLE (blocked)
@@ -486,7 +489,7 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 	if unstable[pack] >= 5 {
 		get(pack).State = 3
 	}
-	saveAll("/shared/data")
+	//saveAll("/shared/data")
 }
 
 // This function returns a list of all Leaf nodes which are marked
@@ -508,12 +511,15 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*N
 	// Iterate over the dependencies of this node, and update
 	// unstable_dep. Also, recursively find out the leaf nodes in
 	// the subtree.
+	fmt.Println("Looking at deps of", vertex.Cpv)
 	for _, dep := range vertex.Dep {
+		fmt.Println("This dep is", dep.Cpv, "with state (not want 1)", dep.State)
 		if dep.State == 1 {
 			unstable_dep++
 			leaves = append(leaves, get_leaf_nodes(dep, visited, serverLeaf)...)
 		}
 	}
+	fmt.Println("Number of unstable dep of", vertex.Cpv, "is", unstable_dep)
 	if unstable_dep == 0 {
 		if serverLeaf && len(vertex.UseFlags) == 0 {
 			leaves = append(leaves, vertex)
@@ -525,10 +531,9 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*N
 }
 
 func getUseFlagsFromNode(node *Node) string {
-	keys := make([]string, len(node.UseFlags[node.NumStable].set))
 	str := ""
-	for k := range node.UseFlags[node.NumStable].set {
-		str += " " + k
+	for k := range node.UseFlags[node.NumStable].MapSet {
+		str += k + " "
 	}
 	return str
 }
@@ -537,6 +542,8 @@ func getUseFlagsFromNode(node *Node) string {
 func rpack(w http.ResponseWriter, req *http.Request) {
 	visited := make(map[string]bool)
 	leaves := make([]*Node, 0)
+
+	fmt.Println("Package requested")
 
 	if len(priority) == 0 {
 		// Iterate over all Nodes and get a list of all
@@ -547,6 +554,8 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 			}
 			leaves = append(leaves, get_leaf_nodes(vertex, visited, false)...)
 		}
+
+		fmt.Println("The leaf nodes are here -", leaves)
 
 		// If there are no such nodes, return none, else
 		// choose one at Random and return.
@@ -594,7 +603,7 @@ func flagTrigger() {
 			}
 			resp.Body.Close()
 		}
-		time.Sleep(time.Minute * 3)
+		time.Sleep(time.Minute * 1)
 	}
 }
 
@@ -705,7 +714,7 @@ func addComment(bugID int, filename string, state int) {
 	// Parameters are: URL
 	// 				   Map string -> string : 'comment' -> comment string
 	//                 Pointer to store result (interface)
-	resp, err := napping.Post(uri, &map[string]string{
+	_, err = napping.Post(uri, &map[string]string{
 		"comment": `
 		Hi There!
 		I am an automated build bot.
@@ -718,9 +727,6 @@ func addComment(bugID int, filename string, state int) {
 		If you think this build was triggered in error or want
 		to suggest somthing, open an issue at 
 		github.com/pallavagarwal07/SummerOfCode16`}, &result, nil)
-
-	printVars(resp.RawText(), err, result)
-
 }
 
 // Function to add package to the tree if it doesn't exist
@@ -735,12 +741,13 @@ func addCombo(w http.ResponseWriter, req *http.Request) {
 	pkg := req.URL.Query().Get("package")
 	flags := req.URL.Query().Get("flags")
 
-	combo := new(Set)
+	combo := newSet()
 	for _, flag := range strings.Split(flags, " ") {
 		combo.Add(flag)
 	}
 
 	database[pkg].UseFlags = append(database[pkg].UseFlags, *combo)
+
 	io.WriteString(w, "1")
 }
 
@@ -803,7 +810,7 @@ func prioritize(bug map[string]interface{}) {
 		fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
 		trigger(cpv)
 	}
-	savePriority("/shared/data")
+	//savePriority("/shared/data")
 }
 
 // This function triggers a TRAVIS build on request
@@ -888,7 +895,6 @@ func bugzillaPolling(c chan bool) {
 				prioritize(k)
 			} else {
 				fmt.Println("This doesn't seem like a stable request")
-				printVars(k)
 			}
 		}
 
