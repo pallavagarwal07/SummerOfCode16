@@ -9,6 +9,7 @@ import requests
 import random
 import base64
 import solver
+import time
 import portage
 import subprocess as sp
 
@@ -62,6 +63,9 @@ def split_up(cpv):
         print "Sent a request to dep solver for", url
         encodedURL = "http://"+DEP_SOLVER_IP+"/" + base64.b64encode(url)
         r2 = requests.get(encodedURL)
+
+        print "Going to sleep to prevent overload"
+        time.sleep(60)
         assert r2.text == "Ok!"
     
 

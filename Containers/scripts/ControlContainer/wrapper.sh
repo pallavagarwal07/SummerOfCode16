@@ -142,9 +142,6 @@ else
     else
         rm -rf ${cachePath}/build
         mkdir -p ${cachePath}/portage ${cachePath}/build
-        wget https://raw.githubusercontent.com/pallavagarwal07/SummerOfCode16/master/ControlContainer/docker-compose.yml
-        docker-compose up
-
         #$docker run -v "${cachePath}/portage":/usr/portage \
             #-v "${cachePath}/build":/root/build \
             #-it pallavagarwal07/gentoo-stabilization:split bash /root/logger.sh screenfetch

@@ -4,6 +4,7 @@ from base64 import urlsafe_b64decode as b64decode
 import os
 import re
 import sys
+import time
 import base64
 import thread
 import portage

@@ -515,7 +515,11 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*N
 	for _, dep := range vertex.Dep {
 		fmt.Println("This dep is", dep.Cpv, "with state (not want 1)", dep.State)
 		if dep.State == 1 {
-			unstable_dep++
+			if serverLeaf && len(dep.UseFlags) == 0 {
+				unstable_dep++
+			} else if !serverLeaf && len(dep.UseFlags) != 0 {
+				unstable_dep++
+			}
 			leaves = append(leaves, get_leaf_nodes(dep, visited, serverLeaf)...)
 		}
 	}

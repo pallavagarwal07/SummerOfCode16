@@ -131,12 +131,6 @@ def dep_resolve(cpv, combo):
 
 
 if __name__ == "__main__":
-
-    serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    serversocket.bind(('localhost', 8080))
-    serversocket.listen(5)
-    connection, address = serversocket.accept()
-    buf = connection.recv(6400)
     if buf == 'abort':
         exit(0)
     cpv, use = buf.split("[;;]")
