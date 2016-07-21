@@ -10,7 +10,7 @@ emerge --info > emerge_info
 eix-update
 qlop    -luCv > emerge_history
 
-../control.py $@
+python ../container.py $@
 
 find . -type d -exec chmod 777 {} \;
 find . -type f -exec chmod 666 {} \;

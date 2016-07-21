@@ -15,9 +15,9 @@ RUN mkdir -p /root/build; \
     USE="-*" emerge --autounmask-write \
                     sci-mathematics/minisat \
                     dev-vcs/git \
+                    app-portage/eix \
                     dev-python/numpy \
                     dev-python/requests \
-                    app-portage/eix \
                     app-portage/portage-utils; \
     easy_install satispy; \
     easy_install pycosat; \

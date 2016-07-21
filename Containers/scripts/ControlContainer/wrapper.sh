@@ -142,9 +142,10 @@ else
     else
         rm -rf ${cachePath}/build
         mkdir -p ${cachePath}/portage ${cachePath}/build
-        #$docker run -v "${cachePath}/portage":/usr/portage \
-            #-v "${cachePath}/build":/root/build \
-            #-it pallavagarwal07/gentoo-stabilization:split bash /root/logger.sh screenfetch
+        $docker run -v "${cachePath}/portage":/usr/portage \
+            -v "${cachePath}/build":/root/build \
+            -it pallavagarwal07/gentoo-stabilization:screenfetch \
+            bash /root/logger.sh
         #cd ${cachePath}/build
 
         #counter=0
@@ -174,18 +175,5 @@ else
         #echo "Uploading the logs...."
         name="$(date +%Y%m%d-%H%M%S).tar.gz"
         cd ${cachePath}
-        tar czf $name build
-        rm -rf build
-        curl -X POST https://content.dropboxapi.com/2/files/upload \
-            --header "Authorization: Bearer 44fUT_rUcTMAAAAAAAACz6SkycQDvtAwWiS0qx9e94vod-k5Ylqa3Q9W2IKtWI6x" \
-            --header "Dropbox-API-Arg: { \"path\": \"/${name}\", \"mode\": \"add\", \"autorename\": true, \"mute\": false }" \
-            --header "Content-Type: application/octet-stream" \
-            --data-binary @${HOME}/cache/${name}
-
-        out=`curl -X POST https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings \
-            --header "Authorization: Bearer 44fUT_rUcTMAAAAAAAAC0FmUfrfGVEwYhPx7HEGTwLgw2X5TlCwFH9TkYrcJWVWI" \
-            --header "Content-Type: application/json" \
-            --data "{\"path\": \"/${name}\",\"settings\": {\"requested_visibility\": \"public\"}}"`
-        download_url=$("${out//[,\}\{]/$'\n'}" | grep \"url\" | sed -r "s/^.*\"([^\"]*)\"$/\1/" | sed "s/dl=0/dl=1/")
     fi
 fi

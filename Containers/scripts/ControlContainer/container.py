@@ -5,7 +5,6 @@ import subprocess
 import base64
 import os
 import re
-import solver
 import random
 import requests
 import sys
@@ -100,10 +99,10 @@ def dep_resolve(cpv, combo):
     my_env = os.environ.copy()
 
     # Add ~amd64 to the keywords ( to get the latest package )
-    if "ACCEPT_KEYWORDS" in my_env:
-        my_env["ACCEPT_KEYWORDS"] += " ~amd64"
-    else:
-        my_env["ACCEPT_KEYWORDS"] = "~amd64"
+    # if "ACCEPT_KEYWORDS" in my_env:
+        # my_env["ACCEPT_KEYWORDS"] += " ~amd64"
+    # else:
+        # my_env["ACCEPT_KEYWORDS"] = "~amd64"
 
     # Add the USE combination to the existing USE flags. Add to
     # the end so that they would override the existing flags
@@ -112,6 +111,7 @@ def dep_resolve(cpv, combo):
     else:
         my_env["USE"] = portage.settings["USE"] + " " + " ".join(combo)
 
+    #TODO Add to file corresponding to the particular package instead
     my_env["USE"] += " test "
 
     # Let portage solve the build tree to find the best compatible
@@ -131,102 +131,24 @@ def dep_resolve(cpv, combo):
 
 
 if __name__ == "__main__":
+    buf = requests.get('http://62.246.156.59/request-package').text
     if buf == 'abort':
         exit(0)
     cpv, use = buf.split("[;;]")
 
     global folder_name
-    trial = sys.argv[1]
-    folder_name = "/root/build/" + trial + "/"
-    cpv = os.environ.get('CPV')
+    folder_name = "/root/build/"
 
+    cpv = cpv.strip()
     assert cpv != None
 
-    use_combo = use.split()
+    use_combo = use.strip().split()
     assert use_combo != None
     
-    # ret_deps is a list of CPVs of dependencies.
-    # my_env is the environment for which the pretend
-    # was run (same would be used to run command)
-    ret_deps, my_env = dep_resolve(cpv, use_combo)
-
-    emerge_info = check_output(["emerge", "--info"], env=my_env)
-    with open(folder_name + "emerge_info", "w") as f:
-        os.chmod(folder_name + "emerge_info", 0o666)
-        f.write(emerge_info)
-
-
     _print("Current package", cpv, "has the following dependencies:")
     _print("\n".join(ret_deps))
 
-    # In case, a dependency is unstable, it would need to be stabilized
-    # first. In that case, there isn't any point with continuing this
-    # stabilization
-    continue_run = True
-
-    # The list obtained also contains the package itself. Remove it
-    deps = [k for k in ret_deps if k != cpv]
-    for dep_cpv in deps:
-        keywords = db.aux_get(dep_cpv, ["KEYWORDS"])[0].split()
-
-        # Check if the current status of the package is '~amd64' (Untested)
-        if '~amd64' in keywords and dep_cpv != cpv:
-            payload = {
-                'id': uniq_code,
-                'parent': b64encode(cpv),
-                'dependency': b64encode(dep_cpv)
-            }
-            # Check what the server has to say about the package.
-            # The parent has to be sent too in case the package has
-            # been marked "fake - stabilized"
-            response = requests.get("http://162.246.156.136/sched-dep",
-                                    params=payload)
-
-            if response.status_code != 200:
-                _print("Stabilization server offline or unaccessible. Exiting")
-                exit(0)
-            else:
-
-                # Has already been stabilized
-                if response.text == "0":
-                    _print("Dependency", dep_cpv, "is already stable")
-                    pass
-
-                # To be stabilized
-                elif response.text == "1":
-                    _print("Dependency", dep_cpv,
-                           "needs to be stabilized first.")
-                    continue_run = False
-
-                # Should be blocked (Tested, and fails)
-                elif response.text == "3":
-                    continue_run = False
-
-                # In case something goes wrong on the server side
-                elif response.text == "-1":
-                    _print("Stabilization server returned error")
-                    exit(0)
-        else:
-            _print("Dependency", dep_cpv, "is already stable")
-
-    if not continue_run:
-        exit(0)
-
-    args = ['emerge', '--info']
-    unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
-    append_log("-------------------------------------------------\n")
-    append_log("-------------------------------------------------\n")
-    for line in iter(unmask.stdout.readline, b""):
-        append_log(line)
-    append_log("-------------------------------------------------\n")
-    append_log("-------------------------------------------------\n")
-    for line in iter(unmask.stderr.readline, b""):
-        append_log(line)
-    append_log("-------------------------------------------------\n")
-    append_log("-------------------------------------------------\n")
-
-    args = ['emerge', '-UuD', '--autounmask-write',
-            "--backtrack=50", "=" + cpv]
+    args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "=" + cpv]
     unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
 
     # This boolean flag takes care of running the emerge command a second
@@ -240,12 +162,16 @@ if __name__ == "__main__":
         # should return true. #TODO Find a better way to do this.
         if 'Autounmask changes' in line or re.search('needs? updating', line):
             retry = True
+        if re.search(r'(keyword|USE) changes', line):
+            retry = True
         line = line[:77] + re.sub('.', '.', line[77:80])
         print(line, end='')
 
     for line in iter(unmask.stderr.readline, b""):
         append_log(line)
         if 'Autounmask changes' in line or re.search('needs? updating', line):
+            retry = True
+        if re.search(r'(keyword|USE) changes', line):
             retry = True
         line = line[:77] + re.sub('.', '.', line[77:80])
         print(line, end='')
@@ -288,7 +214,6 @@ if __name__ == "__main__":
 
         # If return code != 0 (i.e. The build failed)
         if emm.wait() != 0:
-
             # Check to see if internet is working
             if helpers.internet_working:
                 exit(emm.returncode)
