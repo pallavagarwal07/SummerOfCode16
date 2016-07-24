@@ -14,6 +14,8 @@ import helpers
 import binascii
 from subprocess import PIPE, Popen, check_output
 
+print("Started container.py")
+
 # This list will maintain a log of everything that happens
 log = []
 
@@ -131,9 +133,11 @@ def dep_resolve(cpv, combo):
 
 
 if __name__ == "__main__":
-    buf = requests.get('http://62.246.156.59/request-package').text
+    buf = requests.get('http://162.246.156.59:32000/request-package').text
     if buf == 'abort':
         exit(0)
+
+    print("Server sent the package", buf)
     cpv, use = buf.split("[;;]")
 
     global folder_name
@@ -142,11 +146,15 @@ if __name__ == "__main__":
     cpv = cpv.strip()
     assert cpv != None
 
-    use_combo = use.strip().split()
+    use_combo = use.strip()
     assert use_combo != None
-    
-    _print("Current package", cpv, "has the following dependencies:")
-    _print("\n".join(ret_deps))
+
+    my_env = os.environ.copy()
+    if "USE" in my_env:
+        my_env["USE"] += " " + use_combo
+    else:
+        my_env["USE"] = portage.settings["USE"] + " " + use_combo
+    my_env["USE"] += " test "
 
     args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "=" + cpv]
     unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)

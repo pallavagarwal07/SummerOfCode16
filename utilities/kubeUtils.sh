@@ -12,8 +12,11 @@ alias bse="docker build -f $REPO/Containers/Dockerfile-Server \
     -t pallavagarwal07/gentoo-stabilization:server $REPO/Containers/"
 alias bso="docker build -f $REPO/Containers/Dockerfile-Solver \
     -t pallavagarwal07/gentoo-stabilization:solver $REPO/Containers/"
+alias bcl="docker build -f $REPO/Containers/Dockerfile-Client \
+    -t pallavagarwal07/gentoo-stabilization:client $REPO/Containers/"
 alias pse="docker push pallavagarwal07/gentoo-stabilization:server"
 alias pso="docker push pallavagarwal07/gentoo-stabilization:solver"
+alias pcl="docker push pallavagarwal07/gentoo-stabilization:client"
 
 gp() {
     all=$(kubectl get pods | tail -n +2)

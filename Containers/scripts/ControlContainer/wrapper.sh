@@ -140,39 +140,17 @@ else
     if [[ -z "$cachePath" ]]; then
         error "Caching on, but cache path not defined in config file."
     else
+        export PERMUSER=$USER
         rm -rf ${cachePath}/build
         mkdir -p ${cachePath}/portage ${cachePath}/build
-        $docker run -v "${cachePath}/portage":/usr/portage \
-            -v "${cachePath}/build":/root/build \
-            -it pallavagarwal07/gentoo-stabilization:screenfetch \
-            bash /root/logger.sh
-        #cd ${cachePath}/build
-
-        #counter=0
-        #success=0
-        #for i in `ls -d */`; do
-            #cd $i
-            #source use
-            #$docker run -v "${cachePath}/portage":/usr/portage \
-                #-v "${cachePath}/build":/root/build \
-                #-e CPV -e FLAGS \
-                #-it pallavagarwal07/gentoo-stabilization:split python /root/container.py ${i}
-            #if [[ $? -eq 0 ]]; then
-                #cd ..
-                #success=$(( success+1 ))
-                #mv $i ${i}_success
-            #else
-                #cd ..
-                #mv $i ${i}_failed
-            #fi
-            #counter=$(( counter+1 ))
-        #done
-        #if [[ $success -eq $counter ]]; then
-            #success "All tests passed"
-        #else
-            #error "$(( counter-success )) out of $counter tests failed"
-        #fi
-        #echo "Uploading the logs...."
+        cd ${cachePath}/portage
+        echo "Starting container to copy profiles"
+        $docker run --rm pallavagarwal07/gentoo-stabilization:client \
+            bash -c "cd /usr/portage; tar -cf - profiles" | tar --overwrite -xf -
+        echo "Starting container to build the package"
+        $docker run -it -v "${cachePath}/portage":/usr/portage \
+            -v "${cachePath}/build":/root/build -e PERMUSER \
+            pallavagarwal07/gentoo-stabilization:client bash /root/logger.sh
         name="$(date +%Y%m%d-%H%M%S).tar.gz"
         cd ${cachePath}
     fi

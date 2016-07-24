@@ -15,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
+
 	"github.com/gorilla/mux"
 	"github.com/jmcvetta/napping"
 	"github.com/tj/go-dropbox"
@@ -32,12 +35,12 @@ func check(e error) {
 // tree. State 2 can only be leaf nodes
 // and are virtual packages to prevent cycles
 type Node struct {
-	Cpv string
-	Dep []*Node
-
-	UseFlags  []Set
-	NumStable int
-	State     int
+	Id        string     "_id"
+	Cpv       string     "Cpv"
+	Dep       []string   "Dep"
+	UseFlags  [][]string "UseFlags"
+	NumStable int        "NumStable"
+	State     int        "State"
 	// 0: Stable
 	// 1: Unstable
 	// 2: Acting Stable
@@ -51,7 +54,7 @@ type Node struct {
 type Tmp struct {
 	Cpv       string
 	Indices   []int
-	UseFlags  []Set
+	UseFlags  [][]string
 	NumStable int
 	State     int
 }
@@ -63,7 +66,9 @@ type Pair struct {
 
 // This database maintains a map from a packages
 // cpv to it's real (State !=2) node
-var database map[string]*Node
+var session *mgo.Session
+
+var db *mgo.Collection
 var stable map[string]int
 var unstable map[string]int
 var priority []Pair
@@ -89,260 +94,22 @@ func printVars(vars ...interface{}) {
 	}
 }
 
-// Add nodes and their dependencies (recursively) to
-// the lookup table (needed for file input and output)
-// Parameters:
-//			pack *Node         : node to be added
-//			hash map[*Node]int : map from node to index
-//          lookup []*Node     : map from index to node
-//          index              : Current index to be added to
-func add(pack *Node, hash map[*Node]int, lookup []*Node, index int) (int, []*Node) {
-	// IF node is NOT present in hash
-	if _, present := hash[pack]; !present {
-		// Add it to both hashmap and reverse lookup
-		hash[pack] = index
-		lookup = append(lookup, pack)
-		index++
-	}
-	// Repeat for each of its dependencies
-	for _, dep := range pack.Dep {
-		index, lookup = add(dep, hash, lookup, index)
-	}
-	// Return the changed index and lookup list.
-	// hash would've been changed in place and
-	// doesn't need to be returned
-	return index, lookup
-}
-
-// Read the package tree from a file
-func readFromFile(folder string) {
-	filename := folder + "/database"
-	stable_fnm := folder + "/stable"
-	unstable_fnm := folder + "/unstable"
-	priority_fnm := folder + "/priority"
-
-	// Character buffer to store input (TODO: Use a better method
-	// in case the data doesn't fit in hardcoded size)
-	b1 := make([]byte, 5000000)
-
-	file, err := os.Open(filename) // Open file for reading
-	check(err)                     // Check for possible errors
-	defer file.Close()             // Close file when function returns
-
-	file1, err := os.Open(stable_fnm)        // Open file for reading
-	check(err)                               // Check for possible errors
-	defer file1.Close()                      // Close file when function returns
-	len1, err := file1.Read(b1)              // Read from the file
-	check(err)                               // Again, check for errors :/
-	stable = make(map[string]int)            // Reset stable map
-	err = json.Unmarshal(b1[:len1], &stable) // Unmarshal string to stable map
-
-	file2, err := os.Open(unstable_fnm)        // Open file for reading
-	check(err)                                 // Check for possible errors
-	defer file2.Close()                        // Close file when function returns
-	len2, err := file2.Read(b1)                // Read from the file
-	check(err)                                 // Again, check for errors :/
-	unstable = make(map[string]int)            // Reset stable map
-	err = json.Unmarshal(b1[:len2], &unstable) // Unmarshal string to stable map
-
-	file3, err := os.Open(priority_fnm)        // Open file for reading
-	check(err)                                 // Check for possible errors
-	defer file3.Close()                        // Close file when function returns
-	len3, err := file3.Read(b1)                // Read from the file
-	check(err)                                 // Again, check for errors :/
-	unstable = make(map[string]int)            // Reset stable map
-	err = json.Unmarshal(b1[:len3], &priority) // Unmarshal string to stable map
-
-	// Create a lookup from index to node address
-	lookup := make([]*Node, 0)
-
-	// Reinitialise database to clean old data (if present)
-	database = make(map[string]*Node)
-
-	// Temporary structs (containing references in form of indices)
-	var v []Tmp
-	// len contains number of bytes read. This is needed to slice
-	// the input b1 before it is sent to json library. Also, panic
-	// in case of error
-	len, err := file.Read(b1)
-	check(err)
-	// Decode the json into a list of Tmp structs. Save it into v
-	// Capture error and panic if any
-	err = json.Unmarshal(b1[:len], &v)
-	check(err)
-
-	// For every element in v, we create a corresponding node
-	// If the State isn't 2, we add the node to the main cpv
-	// lookup database. We create an empty dependency list, which
-	// would be filled up on pass two (After converting indices
-	// to appropriate nodes using lookup, which is filled up on
-	// this pass)
-	for _, tmp := range v {
-		node := new(Node)
-		node.Cpv = tmp.Cpv
-		node.Dep = make([]*Node, 0)
-		node.State = tmp.State
-		if node.State != 2 {
-			database[node.Cpv] = node
-		}
-		lookup = append(lookup, node)
-	}
-	// Pass two := For every dependency, lookup up the node from
-	// its index and add to the appropriate list
-	for i, tmp := range v {
-		for _, dep := range tmp.Indices {
-			lookup[i].Dep = append(lookup[i].Dep, lookup[dep])
-		}
-	}
-}
-
-// Save all data structures to files in JSON format from where they
-// can be read and extracted next time
-func saveAll(folder string) {
-	// Database that contains the main package tree
-	saveDatabase(folder)
-
-	// List of packages that have been reported as stable
-	// by atleas one client
-	saveStable(folder)
-
-	// List of packages that have been reported as unstable
-	// by atleast one client
-	saveUnstable(folder)
-
-	// Priority List (packages that have recently got a STABLEREQ)
-	savePriority(folder)
-}
-
-// Function to store the stable list to a file
-func saveStable(folder string) {
-	// filename of the stable list
-	stable_fnm := folder + "/stable"
-
-	// Write Only, Create if doesn't exist, delete if it already has text
-	file1, err := os.OpenFile(stable_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	check(err)
-	defer file1.Close()
-
-	// Serialize the list of structs to a JSON string
-	json1, err1 := json.Marshal(stable)
-	// Panic if any error happens
-	check(err1)
-
-	// Write to file and save changes
-	file1.Write(json1)
-	file1.Sync()
-
-}
-
-// Function to store the unstable list to a file
-func saveUnstable(folder string) {
-	unstable_fnm := folder + "/unstable"
-
-	// Write Only, Create if doesn't exist, delete if it already has text
-	file1, err := os.OpenFile(unstable_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	check(err)
-	defer file1.Close()
-
-	// Serialize the list of structs to a JSON string
-	json1, err1 := json.Marshal(unstable)
-	// Panic if any error happens
-	check(err1)
-
-	// Write to file and save changes
-	file1.Write(json1)
-	file1.Sync()
-
-}
-
-// Function to store the priority list to a file
-func savePriority(folder string) {
-	priority_fnm := folder + "/priority"
-
-	// Write Only, Create if doesn't exist, delete if it already has text
-	file1, err := os.OpenFile(priority_fnm, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	check(err)
-	defer file1.Close()
-
-	// Serialize the list of structs to a JSON string
-	json1, err1 := json.Marshal(priority)
-	// Panic if any error happens
-	check(err1)
-
-	// Write to file and save changes
-	file1.Write(json1)
-	file1.Sync()
-
-}
-
-func saveDatabase(folder string) {
-	filename := folder + "/database"
-
-	// Current index for which lookup is being added
-	// hash: mapping from node address to their index (int)
-	// lookup: mapping from index to node address
-	index := 0
-	hash := make(map[*Node]int)
-	lookup := make([]*Node, 0)
-
-	// For everything in the database map, add them to hash
-	// and lookup (existing check is done inside add function)
-	for _, pack := range database {
-		index, lookup = add(pack, hash, lookup, index)
-	}
-
-	// Open file for writing.
-	// O_WRONLY : only for writing
-	// O_CREATE : create file if it doesn't exist
-	// O_TRUNC  : Remove whatever is in the file
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	check(err)
-	defer file.Close()
-
-	// Write contents in sort of json like format, which can be read later
-	// automatically by json library. Ideally, GoLang templates should be
-	// used. But the use of templates seemed complicated for one time use.
-	file.Write([]byte("["))
-	for i, node := range lookup {
-		// All references in the Dep list of nodes are converted to indices
-		// using the hash (map[Node*]int). The index is same as the indices
-		// in the list they are being printed
-		// Fields are "Cpv", "Indices", "State" (Same as Tmp struct)
-		file.Write([]byte(fmt.Sprint("{ \"Cpv\":\"", node.Cpv, "\",")))
-		file.Write([]byte("\"Indices\":[ "))
-		for j, dep := range node.Dep {
-			if j != len(node.Dep)-1 {
-				file.Write([]byte(fmt.Sprint(hash[dep], ", ")))
-			} else {
-				file.Write([]byte(fmt.Sprint(hash[dep])))
-			}
-		}
-		file.Write([]byte(fmt.Sprint("], ")))
-		file.Write([]byte(fmt.Sprint("\"State\":", node.State, "}")))
-		if i != len(lookup)-1 {
-			file.Write([]byte(","))
-		}
-		file.Write([]byte("\n"))
-	}
-	file.Write([]byte("]"))
-	file.Sync()
-	// Sync changes to the file. File will be autoclosed
-	// later due to defer file.Close()
-}
-
 // Get the Node* object from database map
 // If the object doesn't already exist,
 // initialise it with sane default parameters
 func get(cpv string) *Node {
-	if _, present := database[cpv]; !present { // if not present in database
-		node := new(Node)           // make a new node (type Node*)
-		node.Cpv = cpv              // it's cpv should be same as lookup key
-		node.Dep = make([]*Node, 0) // Make empty dependency list
-		node.State = 1              // Assume it to be unstable
-		database[cpv] = node        // Add it to the database
+	n, err := db.Find(bson.M{"Cpv": cpv}).Limit(1).Count()
+	check(err)
+	if present := (n == 1); !present { // if not present in database
+		node := new(Node)
+		node.Cpv = cpv               // it's cpv should be same as lookup key
+		node.Dep = make([]string, 0) // Make empty dependency list
+		node.State = 1               // Assume it to be unstable
+		db.Insert(node)              // Add it to the database
 	}
-	//saveAll("/shared/data")
-	return database[cpv]
+	var result *Node
+	db.Find(bson.M{"Cpv": cpv}).One(&result)
+	return result
 }
 
 // Function runs a DFS traversal on the directed graph and
@@ -350,27 +117,36 @@ func get(cpv string) *Node {
 // the cycle by creating a fake package with same cpv, but
 // with no dependencies, and acting as stabilized (State 2)
 // Thus, in the end, we have a directed acyclic graph (DAG)
-func traverse(vertex *Node, ancestor, visited map[string]bool) {
+func traverse(vertex string, ancestor map[string]string, visited map[string]bool) {
 	// visited map is used to check for disjoint trees only
-	visited[vertex.Cpv] = true
+	var result *Node
+	db.Find(bson.M{"_id": vertex}).One(result)
+	visited[result.Cpv] = true
+
+	var resArr []*Node
+	db.Find(bson.M{"_id": bson.M{"$in": result.Dep}}).All(resArr)
 	// Iterate over every dependency of current node
-	for index, child := range vertex.Dep {
+	for _, child := range resArr {
 		// If there exists an ancestor with same cpv and the
 		// ancestor IS this node, then we have found a cycle
-		if ancestor[child.Cpv] && child == database[child.Cpv] {
+		if a, pr := ancestor[child.Cpv]; pr && child.Id == a {
 			// Replace this child with a fake stabilized node
 			// Thus, new node -> state 2 -> same cpv -> add
 			node := new(Node)
 			node.Cpv = child.Cpv
-			node.Dep = make([]*Node, 0)
+			node.Dep = make([]string, 0)
 			node.State = 2
-			vertex.Dep[index] = node
+			db.Insert(node)
+
+			db.Find(bson.M{"Cpv": node.Cpv, "State": 2}).One(node)
+			db.Update(bson.M{"_id": vertex}, bson.M{"$pull": bson.M{"Dep": a}})
+			db.Update(bson.M{"_id": vertex}, bson.M{"$push": bson.M{"Dep": node.Id}})
 		} else {
 			// else, mark current as ancestor, traverse child
 			// and unmark as ancestor
-			ancestor[child.Cpv] = true
-			traverse(child, ancestor, visited)
-			ancestor[child.Cpv] = false
+			ancestor[child.Cpv] = child.Id
+			traverse(child.Id, ancestor, visited)
+			delete(ancestor, child.Cpv)
 		}
 	}
 }
@@ -380,16 +156,23 @@ func traverse(vertex *Node, ancestor, visited map[string]bool) {
 // traverse() over the nodes
 func evaluate() {
 	visited := make(map[string]bool)
-	ancestor := make(map[string]bool)
-	for cpv, vertex := range database {
+	ancestor := make(map[string]string)
+
+	var result []struct {
+		_id string "_id"
+		Cpv string "Cpv"
+	}
+
+	db.Find(nil).Select(bson.M{"_id": 1, "Cpv": 1}).All(&result)
+	for _, node := range result {
+		cpv, vertex := node.Cpv, node._id
 		if visited[cpv] {
 			continue
 		}
-		ancestor[cpv] = true
+		ancestor[cpv] = cpv
 		traverse(vertex, ancestor, visited)
-		ancestor[cpv] = false
+		delete(ancestor, cpv)
 	}
-	//saveAll("/shared/data")
 }
 
 // Simple function to decode base64 and return string
@@ -415,9 +198,16 @@ func dep(w http.ResponseWriter, req *http.Request) {
 		pnode := get(parent)
 		cnode := get(depend)
 
+		var result []struct {
+			_id string "_id"
+			Cpv string "Cpv"
+		}
+
+		db.Find(bson.M{"_id": bson.M{"$in": pnode.Dep}}).Select(
+			bson.M{"_id": 1, "Cpv": 1}).All(&result)
 		flag := false
 		// Check if dependency already exists in the tree
-		for _, depnode := range pnode.Dep {
+		for _, depnode := range result {
 			if depnode.Cpv == depend {
 				flag = true
 				break
@@ -425,19 +215,11 @@ func dep(w http.ResponseWriter, req *http.Request) {
 		}
 		// If not, then add it and reavaluate the tree
 		if !flag {
-			pnode.Dep = append(pnode.Dep, cnode)
+			db.Update(bson.M{"_id": pnode.Id}, bson.M{"$push": bson.M{"Dep": cnode.Id}})
 			fmt.Println("Added", pnode.Cpv, "->", cnode.Cpv)
 			evaluate()
 		}
-		for _, d := range pnode.Dep {
-			if d.Cpv == depend {
-				io.WriteString(w, fmt.Sprint(d.State))
-				return
-			}
-		}
-		// Write a message to the request
-		io.WriteString(w, "-1")
-		fmt.Println("This should have never been encountered")
+		io.WriteString(w, "1")
 	} else {
 		io.WriteString(w, "-1")
 	}
@@ -451,20 +233,12 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 
 	// Base64 decode the package name
 	pack, _ := b64decode(pack_b64)
-	// Increment the stable count (We can't rely on a single PC's
-	// claim)
-	stable[pack]++
+
+	db.Update(bson.M{"Cpv": pack}, bson.M{"State": 0})
+	fmt.Println("Got request to mark", pack, "as stable")
 
 	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 0}
 	quick_ref[req.URL.Query().Get("id")] = immediate_node
-
-	fmt.Println("Got request to mark", pack, "as stable")
-	// If two or more PC's claim that it is stable, then mark it
-	// as stable
-	if stable[pack] >= 2 {
-		get(pack).State = 0
-	}
-	//saveAll("/shared/data")
 }
 
 // Function called to mark a particular package as UNSTABLE (blocked)
@@ -484,23 +258,21 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 3}
 	quick_ref[req.URL.Query().Get("id")] = immediate_node
 
-	// If over 5 PC's claim a package to be unstable, mark it as
-	// such
-	if unstable[pack] >= 5 {
-		get(pack).State = 3
-	}
-	//saveAll("/shared/data")
+	db.Update(bson.M{"Cpv": pack}, bson.M{"State": 3})
 }
 
 // This function returns a list of all Leaf nodes which are marked
 // as "not yet stabilized" (state 1)
-func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*Node {
+func get_leaf_nodes(id string, visited map[string]bool, serverLeaf bool) []*Node {
 	// Count of unstabilized dependencies of Node (This node would
 	// be a leaf node only if unstable_dep = 0)
 	unstable_dep := 0
 
+	var vertex *Node
+	db.Find(bson.M{"_id": id}).One(vertex)
 	// List of leaves in **this** subtree
 	leaves := make([]*Node, 0)
+	deps := make([]*Node, 0)
 
 	// If this package is itself not "unstabilized", then this
 	// subtree doesn't matter
@@ -508,11 +280,13 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*N
 		return leaves
 	}
 
+	db.Find(bson.M{"_id": bson.M{"$in": vertex.Dep}}).Select(bson.M{"_id": 1, "Cpv": 1}).All(deps)
+
 	// Iterate over the dependencies of this node, and update
 	// unstable_dep. Also, recursively find out the leaf nodes in
 	// the subtree.
 	fmt.Println("Looking at deps of", vertex.Cpv)
-	for _, dep := range vertex.Dep {
+	for _, dep := range deps {
 		fmt.Println("This dep is", dep.Cpv, "with state (not want 1)", dep.State)
 		if dep.State == 1 {
 			if serverLeaf && len(dep.UseFlags) == 0 {
@@ -520,7 +294,7 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*N
 			} else if !serverLeaf && len(dep.UseFlags) != 0 {
 				unstable_dep++
 			}
-			leaves = append(leaves, get_leaf_nodes(dep, visited, serverLeaf)...)
+			leaves = append(leaves, get_leaf_nodes(dep.Id, visited, serverLeaf)...)
 		}
 	}
 	fmt.Println("Number of unstable dep of", vertex.Cpv, "is", unstable_dep)
@@ -536,7 +310,7 @@ func get_leaf_nodes(vertex *Node, visited map[string]bool, serverLeaf bool) []*N
 
 func getUseFlagsFromNode(node *Node) string {
 	str := ""
-	for k := range node.UseFlags[node.NumStable].MapSet {
+	for _, k := range node.UseFlags[node.NumStable] {
 		str += k + " "
 	}
 	return str
@@ -550,9 +324,16 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("Package requested")
 
 	if len(priority) == 0 {
+		var result []struct {
+			_id string "_id"
+			Cpv string "Cpv"
+		}
+
+		db.Find(nil).Select(bson.M{"_id": 1, "Cpv": 1}).All(&result)
 		// Iterate over all Nodes and get a list of all
 		// non-stabilized leaf nodes
-		for cpv, vertex := range database {
+		for _, node := range result {
+			cpv, vertex := node.Cpv, node._id
 			if visited[cpv] {
 				continue
 			}
@@ -571,9 +352,9 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 				leaves[rand_num].Cpv+"[;;]"+getUseFlagsFromNode(leaves[rand_num]))
 		}
 	} else {
-		io.WriteString(w, priority[0].Cpv+"[;;]"+
-			getUseFlagsFromNode(database[priority[0].Cpv]))
-		priority = append(priority[1:], priority[0])
+		//io.WriteString(w, priority[0].Cpv+"[;;]"+
+		//getUseFlagsFromNode(database[priority[0].Cpv]))
+		//priority = append(priority[1:], priority[0])
 	}
 }
 
@@ -587,7 +368,15 @@ func flagTrigger() {
 		visited := make(map[string]bool)
 		leaves := make([]*Node, 0)
 
-		for cpv, vertex := range database {
+		var result []struct {
+			_id string "_id"
+			Cpv string "Cpv"
+		}
+
+		db.Find(nil).Select(bson.M{"_id": 1, "Cpv": 1}).All(&result)
+
+		for _, node := range result {
+			cpv, vertex := node.Cpv, node._id
 			if visited[cpv] {
 				continue
 			}
@@ -608,40 +397,6 @@ func flagTrigger() {
 			resp.Body.Close()
 		}
 		time.Sleep(time.Minute * 1)
-	}
-}
-
-// This function recieves the build logs from the client.
-// Recieve -> Decode -> File Open -> File Write -> File Close
-func submitlog(w http.ResponseWriter, req *http.Request) {
-	req.ParseForm()
-	req.ParseMultipartForm(200000000)
-	log_b64 := req.Form.Get("log")
-	id := req.Form.Get("id")
-	log, _ := b64decode(log_b64)
-	filename := "/shared/logs/" + req.Form.Get("filename")
-	fmt.Println("filename is:" + filename)
-
-	// Open file for writing.
-	// O_WRONLY : only for writing
-	// O_CREATE : create file if it doesn't exist
-	// O_TRUNC  : Remove whatever is in the file
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	check(err)
-	defer file.Close()
-
-	file.Write([]byte(log))
-
-	if node, present := quick_ref[id]; present {
-		state := node.State
-		cpv := node.Cpv
-		for i, p := range priority {
-			if p.Cpv == cpv {
-				addComment(p.bugID, filename, state)
-				priority = append(priority[:i], priority[i+1:]...)
-				break
-			}
-		}
 	}
 }
 
@@ -745,12 +500,9 @@ func addCombo(w http.ResponseWriter, req *http.Request) {
 	pkg := req.URL.Query().Get("package")
 	flags := req.URL.Query().Get("flags")
 
-	combo := newSet()
-	for _, flag := range strings.Split(flags, " ") {
-		combo.Add(flag)
-	}
+	combo := strings.Split(flags, " ")
 
-	database[pkg].UseFlags = append(database[pkg].UseFlags, *combo)
+	db.Update(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}, bson.M{"$push": bson.M{"Dep": combo}})
 
 	io.WriteString(w, "1")
 }
@@ -765,7 +517,7 @@ func serverStart(c chan bool) {
 	r.HandleFunc("/mark-stable", mstable)
 	r.HandleFunc("/mark-blocked", mblock)
 	r.HandleFunc("/request-package", rpack)
-	r.HandleFunc("/submit-log", submitlog)
+	//r.HandleFunc("/submit-log", submitlog)
 	r.HandleFunc("/add-package", addpack)
 	r.HandleFunc("/add-combo", addCombo)
 
@@ -911,13 +663,13 @@ func bugzillaPolling(c chan bool) {
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	c := make(chan bool)
-	go serverStart(c)
-	go flagTrigger()
 	//go bugzillaPolling(c)
 	quick_ref = make(map[string]Tmp)
-	database = make(map[string]*Node)
-	// readFromFile("/shared/data")
-	// saveAll("/shared/data")
+	session, err := mgo.Dial("localhost")
+	check(err)
+	db = session.DB("data").C("database")
+	go serverStart(c)
+	go flagTrigger()
 	fmt.Println("Started server on port 80")
 	<-c
 }

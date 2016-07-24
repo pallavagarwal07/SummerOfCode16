@@ -4,25 +4,19 @@ RUN mkdir -p /root/build; \
     emerge-webrsync; \
     eselect python set python2.7; \
     echo 'MAKEOPTS="-j4"' >> /etc/portage/make.conf; \
-    USE="-*" emerge --autounmask-write \
-                    sci-mathematics/minisat \
-                    dev-vcs/git \
-                    app-portage/eix \
-                    dev-python/numpy \
-                    dev-python/requests \
-                    app-portage/portage-utils; \
+    emerge --autounmask-write dev-vcs/git \
+                              dev-python/numpy \
+                              dev-python/requests \
+                              app-portage/portage-utils; \
     yes | etc-update --automode -3; \
-    USE="-*" emerge --autounmask-write \
-                    sci-mathematics/minisat \
-                    dev-vcs/git \
-                    app-portage/eix \
-                    dev-python/numpy \
-                    dev-python/requests \
-                    app-portage/portage-utils; \
+    emerge --autounmask-write dev-vcs/git \
+                              dev-python/numpy \
+                              dev-python/requests \
+                              app-portage/portage-utils; \
     easy_install satispy; \
     easy_install pycosat; \
     cd /usr/portage; \
-    rm -rf `ls -w1 | grep -vP '^profiles'`;
+    rm -rf `ls -1A | grep -vP '^profiles'`;
 COPY scripts/ControlContainer/*.py scripts/ControlContainer/*.sh /root/
 COPY etc_portage /etc/portage/
 CMD ["/root/logger.sh"]

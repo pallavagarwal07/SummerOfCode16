@@ -11,9 +11,11 @@ RUN mkdir -p /shared/data /shared/logs; \
     echo "[]" > /shared/data/priority; \
     echo "{}" > /shared/data/unstable; \
     echo "{}" > /shared/data/stable; \
-    go get github.com/gorilla/mux; \
-    go get github.com/jmcvetta/napping; \
-    go get github.com/tj/go-dropbox; \
+    go get "github.com/gorilla/mux"; \
+    go get "github.com/jmcvetta/napping"; \
+    go get "github.com/tj/go-dropbox"; \
+    go get "gopkg.in/mgo.v2"; \
+    go get "gopkg.in/mgo.v2/bson"; \
     go install gentoo-stable
 
 # Run the outyet command by default when the container starts.
