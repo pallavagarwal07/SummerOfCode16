@@ -26,6 +26,7 @@ import (
 // Instead of failing silently, crash
 // and burn in case of any error
 func check(e error) {
+	fmt.Println("check:", "Check called")
 	if e != nil {
 		panic(e)
 	}
@@ -35,12 +36,12 @@ func check(e error) {
 // tree. State 2 can only be leaf nodes
 // and are virtual packages to prevent cycles
 type Node struct {
-	Id        string     "_id"
-	Cpv       string     "Cpv"
-	Dep       []string   "Dep"
-	UseFlags  [][]string "UseFlags"
-	NumStable int        "NumStable"
-	State     int        "State"
+	Id        bson.ObjectId   `bson:"_id,omitempty"`
+	Cpv       string          "Cpv"
+	Dep       []bson.ObjectId "Dep"
+	UseFlags  [][]string      "UseFlags"
+	NumStable int             "NumStable"
+	State     int             "State"
 	// 0: Stable
 	// 1: Unstable
 	// 2: Acting Stable
@@ -98,17 +99,22 @@ func printVars(vars ...interface{}) {
 // If the object doesn't already exist,
 // initialise it with sane default parameters
 func get(cpv string) *Node {
+	fmt.Println("get:", "Get called")
 	n, err := db.Find(bson.M{"Cpv": cpv}).Limit(1).Count()
+	fmt.Println("get:", "Beware: n is", n)
 	check(err)
 	if present := (n == 1); !present { // if not present in database
+		fmt.Println("get:", "Creating a new node")
 		node := new(Node)
-		node.Cpv = cpv               // it's cpv should be same as lookup key
-		node.Dep = make([]string, 0) // Make empty dependency list
-		node.State = 1               // Assume it to be unstable
-		db.Insert(node)              // Add it to the database
+		node.Cpv = cpv                      // it's cpv should be same as lookup key
+		node.Dep = make([]bson.ObjectId, 0) // Make empty dependency list
+		node.State = 1                      // Assume it to be unstable
+		db.Insert(*node)                    // Add it to the database
+		fmt.Println("get:", "Inserted", cpv, "to database")
 	}
 	var result *Node
 	db.Find(bson.M{"Cpv": cpv}).One(&result)
+	fmt.Println("get:", "Retrieved result", result)
 	return result
 }
 
@@ -117,14 +123,15 @@ func get(cpv string) *Node {
 // the cycle by creating a fake package with same cpv, but
 // with no dependencies, and acting as stabilized (State 2)
 // Thus, in the end, we have a directed acyclic graph (DAG)
-func traverse(vertex string, ancestor map[string]string, visited map[string]bool) {
+func traverse(vertex bson.ObjectId, ancestor map[string]bson.ObjectId, visited map[string]bool) {
+	fmt.Println("traverse:", "traverse called")
 	// visited map is used to check for disjoint trees only
 	var result *Node
-	db.Find(bson.M{"_id": vertex}).One(result)
+	db.Find(bson.M{"_id": vertex}).One(&result)
 	visited[result.Cpv] = true
 
 	var resArr []*Node
-	db.Find(bson.M{"_id": bson.M{"$in": result.Dep}}).All(resArr)
+	db.Find(bson.M{"_id": bson.M{"$in": result.Dep}}).All(&resArr)
 	// Iterate over every dependency of current node
 	for _, child := range resArr {
 		// If there exists an ancestor with same cpv and the
@@ -134,11 +141,11 @@ func traverse(vertex string, ancestor map[string]string, visited map[string]bool
 			// Thus, new node -> state 2 -> same cpv -> add
 			node := new(Node)
 			node.Cpv = child.Cpv
-			node.Dep = make([]string, 0)
+			node.Dep = make([]bson.ObjectId, 0)
 			node.State = 2
 			db.Insert(node)
 
-			db.Find(bson.M{"Cpv": node.Cpv, "State": 2}).One(node)
+			db.Find(bson.M{"Cpv": node.Cpv, "State": 2}).One(&node)
 			db.Update(bson.M{"_id": vertex}, bson.M{"$pull": bson.M{"Dep": a}})
 			db.Update(bson.M{"_id": vertex}, bson.M{"$push": bson.M{"Dep": node.Id}})
 		} else {
@@ -155,12 +162,13 @@ func traverse(vertex string, ancestor map[string]string, visited map[string]bool
 // cycles. This traverses over the database and calls
 // traverse() over the nodes
 func evaluate() {
+	fmt.Println("evaluate:", "evaluate called")
 	visited := make(map[string]bool)
-	ancestor := make(map[string]string)
+	ancestor := make(map[string]bson.ObjectId)
 
 	var result []struct {
-		_id string "_id"
-		Cpv string "Cpv"
+		_id bson.ObjectId `bson:"_id,omitempty"`
+		Cpv string        "Cpv"
 	}
 
 	db.Find(nil).Select(bson.M{"_id": 1, "Cpv": 1}).All(&result)
@@ -169,7 +177,7 @@ func evaluate() {
 		if visited[cpv] {
 			continue
 		}
-		ancestor[cpv] = cpv
+		ancestor[cpv] = vertex
 		traverse(vertex, ancestor, visited)
 		delete(ancestor, cpv)
 	}
@@ -178,19 +186,21 @@ func evaluate() {
 // Simple function to decode base64 and return string
 // instead of an array of bytes
 func b64decode(str string) (string, error) {
+	fmt.Println("b64decode:", "b64decode called")
 	parent, err1 := base64.RawURLEncoding.DecodeString(str)
 	return string(parent[:]), err1
 }
 
 // Handler function for http requests to /sched-dep
 func dep(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("dep:", "a->b (dep) called")
 	// Get parent and dependency and decode them (base64)
 	parent_b64 := req.URL.Query().Get("parent")
 	parent, err1 := b64decode(parent_b64)
 	depend_b64 := req.URL.Query().Get("dependency")
 	depend, err2 := b64decode(depend_b64)
 
-	fmt.Println("Parent-Dependency combo", parent, "->", depend)
+	fmt.Println("dep:", "Parent-Dependency combo", parent, "->", depend)
 
 	// Abort if any error has occured.
 	// Get the nodes for both parent and child
@@ -199,8 +209,8 @@ func dep(w http.ResponseWriter, req *http.Request) {
 		cnode := get(depend)
 
 		var result []struct {
-			_id string "_id"
-			Cpv string "Cpv"
+			_id bson.ObjectId `bson:"_id,omitempty"`
+			Cpv string        "Cpv"
 		}
 
 		db.Find(bson.M{"_id": bson.M{"$in": pnode.Dep}}).Select(
@@ -216,7 +226,7 @@ func dep(w http.ResponseWriter, req *http.Request) {
 		// If not, then add it and reavaluate the tree
 		if !flag {
 			db.Update(bson.M{"_id": pnode.Id}, bson.M{"$push": bson.M{"Dep": cnode.Id}})
-			fmt.Println("Added", pnode.Cpv, "->", cnode.Cpv)
+			fmt.Println("dep:", "Added", pnode.Cpv, "->", cnode.Cpv)
 			evaluate()
 		}
 		io.WriteString(w, "1")
@@ -227,6 +237,7 @@ func dep(w http.ResponseWriter, req *http.Request) {
 
 // Function called to mark a particular package cpv as stable
 func mstable(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("mstable:", "mstable called")
 
 	// Get the appropriate package from the GET parameters
 	pack_b64 := req.URL.Query().Get("package")
@@ -235,7 +246,7 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 	pack, _ := b64decode(pack_b64)
 
 	db.Update(bson.M{"Cpv": pack}, bson.M{"State": 0})
-	fmt.Println("Got request to mark", pack, "as stable")
+	fmt.Println("mstable:", "Got request to mark", pack, "as stable")
 
 	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 0}
 	quick_ref[req.URL.Query().Get("id")] = immediate_node
@@ -243,6 +254,7 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 
 // Function called to mark a particular package as UNSTABLE (blocked)
 func mblock(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("mblock:", "mblock called")
 
 	// Get the appropriate package from the GET parameters
 	pack_b64 := req.URL.Query().Get("package")
@@ -253,7 +265,7 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 	// Increment the unstable count (We can't rely on a single
 	// PC's claim)
 	unstable[pack]++
-	fmt.Println("Got request to mark", pack, "as unstable")
+	fmt.Println("mblock:", "Got request to mark", pack, "as unstable")
 
 	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 3}
 	quick_ref[req.URL.Query().Get("id")] = immediate_node
@@ -263,16 +275,20 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 
 // This function returns a list of all Leaf nodes which are marked
 // as "not yet stabilized" (state 1)
-func get_leaf_nodes(id string, visited map[string]bool, serverLeaf bool) []*Node {
+func get_leaf_nodes(id bson.ObjectId, visited map[string]bool, serverLeaf bool) []*Node {
+	fmt.Println("get_leaf_nodes:", "get_leaf_nodes called")
 	// Count of unstabilized dependencies of Node (This node would
 	// be a leaf node only if unstable_dep = 0)
 	unstable_dep := 0
 
 	var vertex *Node
-	db.Find(bson.M{"_id": id}).One(vertex)
+	fmt.Println("g_l_n: ", "before crashing, id=", id)
+	db.FindId(id).One(&vertex)
 	// List of leaves in **this** subtree
 	leaves := make([]*Node, 0)
 	deps := make([]*Node, 0)
+
+	fmt.Println("g_l_n: the vertex found was:", vertex)
 
 	// If this package is itself not "unstabilized", then this
 	// subtree doesn't matter
@@ -280,14 +296,14 @@ func get_leaf_nodes(id string, visited map[string]bool, serverLeaf bool) []*Node
 		return leaves
 	}
 
-	db.Find(bson.M{"_id": bson.M{"$in": vertex.Dep}}).Select(bson.M{"_id": 1, "Cpv": 1}).All(deps)
+	db.Find(bson.M{"_id": bson.M{"$in": vertex.Dep}}).Select(bson.M{"_id": 1, "Cpv": 1}).All(&deps)
 
 	// Iterate over the dependencies of this node, and update
 	// unstable_dep. Also, recursively find out the leaf nodes in
 	// the subtree.
-	fmt.Println("Looking at deps of", vertex.Cpv)
+	fmt.Println("get_leaf_nodes:", "Looking at deps of", vertex.Cpv)
 	for _, dep := range deps {
-		fmt.Println("This dep is", dep.Cpv, "with state (not want 1)", dep.State)
+		fmt.Println("get_leaf_nodes:", "This dep is", dep.Cpv, "with state (not want 1)", dep.State)
 		if dep.State == 1 {
 			if serverLeaf && len(dep.UseFlags) == 0 {
 				unstable_dep++
@@ -297,7 +313,7 @@ func get_leaf_nodes(id string, visited map[string]bool, serverLeaf bool) []*Node
 			leaves = append(leaves, get_leaf_nodes(dep.Id, visited, serverLeaf)...)
 		}
 	}
-	fmt.Println("Number of unstable dep of", vertex.Cpv, "is", unstable_dep)
+	fmt.Println("get_leaf_nodes:", "Number of unstable dep of", vertex.Cpv, "is", unstable_dep)
 	if unstable_dep == 0 {
 		if serverLeaf && len(vertex.UseFlags) == 0 {
 			leaves = append(leaves, vertex)
@@ -309,6 +325,7 @@ func get_leaf_nodes(id string, visited map[string]bool, serverLeaf bool) []*Node
 }
 
 func getUseFlagsFromNode(node *Node) string {
+	fmt.Println("getUseFlagsFromNode:", "getUseFlagsFromNode called")
 	str := ""
 	for _, k := range node.UseFlags[node.NumStable] {
 		str += k + " "
@@ -318,29 +335,32 @@ func getUseFlagsFromNode(node *Node) string {
 
 // This function handles the "need package" type of request
 func rpack(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("rpack:", "rpack called")
 	visited := make(map[string]bool)
 	leaves := make([]*Node, 0)
 
-	fmt.Println("Package requested")
+	fmt.Println("rpack:", "Package requested")
 
 	if len(priority) == 0 {
 		var result []struct {
-			_id string "_id"
-			Cpv string "Cpv"
+			Id  bson.ObjectId `bson:"_id,omitempty"`
+			Cpv string        "Cpv"
 		}
 
 		db.Find(nil).Select(bson.M{"_id": 1, "Cpv": 1}).All(&result)
+		fmt.Println("rpack: request package got", result)
+
 		// Iterate over all Nodes and get a list of all
 		// non-stabilized leaf nodes
 		for _, node := range result {
-			cpv, vertex := node.Cpv, node._id
+			cpv, vertex := node.Cpv, node.Id
 			if visited[cpv] {
 				continue
 			}
 			leaves = append(leaves, get_leaf_nodes(vertex, visited, false)...)
 		}
 
-		fmt.Println("The leaf nodes are here -", leaves)
+		fmt.Println("rpack:", "The leaf nodes are here -", leaves)
 
 		// If there are no such nodes, return none, else
 		// choose one at Random and return.
@@ -361,6 +381,7 @@ func rpack(w http.ResponseWriter, req *http.Request) {
 // Infinite loop that periodically computes the flag combinations
 // of different packages (by triggering them)
 func flagTrigger() {
+	fmt.Println("flagTrigger:", "flagTrigger called")
 
 	FLAG_SOLVER_IP := os.Getenv("ORCA_FLAG_SOLVER_SERVICE_HOST")
 
@@ -369,14 +390,17 @@ func flagTrigger() {
 		leaves := make([]*Node, 0)
 
 		var result []struct {
-			_id string "_id"
-			Cpv string "Cpv"
+			Id  bson.ObjectId `bson:"_id,omitempty"`
+			Cpv string        "Cpv"
 		}
 
 		db.Find(nil).Select(bson.M{"_id": 1, "Cpv": 1}).All(&result)
 
+		fmt.Println("flagTrigger:", "Retrieved for tree was the array:", result)
+
 		for _, node := range result {
-			cpv, vertex := node.Cpv, node._id
+			fmt.Println("flagTrigger: ", node.Cpv, node.Id)
+			cpv, vertex := node.Cpv, node.Id
 			if visited[cpv] {
 				continue
 			}
@@ -391,7 +415,7 @@ func flagTrigger() {
 			resp, err := http.Get(url)
 			text, err := ioutil.ReadAll(resp.Body)
 			if string(text) != "Ok!" {
-				fmt.Println(text)
+				fmt.Println("flagTrigger:", text)
 				panic(err)
 			}
 			resp.Body.Close()
@@ -403,6 +427,7 @@ func flagTrigger() {
 // Post a comment to bugzilla with logs to a specific package
 // which is of state (stable/unstable)
 func addComment(bugID int, filename string, state int) {
+	fmt.Println("addComment:", "addComment called")
 	// URL to the bugzilla rest api
 	uri := "https://bugs.gentoo.org/rest/bug/"
 
@@ -433,7 +458,7 @@ func addComment(bugID int, filename string, state int) {
 
 	// In case the upload failed, print error and return to calling function
 	if err != nil {
-		fmt.Println("Error occured during upload: ", err)
+		fmt.Println("addComment:", "Error occured during upload: ", err)
 		return
 	}
 
@@ -447,7 +472,7 @@ func addComment(bugID int, filename string, state int) {
 	// If the URL can't be retrieved, again print error and return to calling
 	// function
 	if err != nil {
-		fmt.Println("Error while retrieving URL: ", err)
+		fmt.Println("addComment:", "Error while retrieving URL: ", err)
 		return
 	}
 
@@ -490,19 +515,29 @@ func addComment(bugID int, filename string, state int) {
 
 // Function to add package to the tree if it doesn't exist
 func addpack(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("addpack:", "addpack called")
 	pkg := req.URL.Query().Get("package")
-	fmt.Println(pkg)
+	fmt.Println("addpack:", pkg)
 	get(pkg)
 	io.WriteString(w, "1")
 }
 
 func addCombo(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("addCombo:", "addCombo called")
 	pkg := req.URL.Query().Get("package")
 	flags := req.URL.Query().Get("flags")
 
+	fmt.Println("Combo wants to add", pkg, "with", flags)
+
 	combo := strings.Split(flags, " ")
 
-	db.Update(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}, bson.M{"$push": bson.M{"Dep": combo}})
+	var res []*Node
+
+	db.Find(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}).All(&res)
+	fmt.Println("The update seems to be applied to: ", res, "for combo", combo)
+	db.Update(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}, bson.M{"$push": bson.M{"UseFlags": combo}})
+	db.Find(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}).All(&res)
+	fmt.Println("The update seems to have been applied to: ", res[0])
 
 	io.WriteString(w, "1")
 }
@@ -512,6 +547,7 @@ func addCombo(w http.ResponseWriter, req *http.Request) {
 // separate "goroutine" and still block the main
 // function when it is done
 func serverStart(c chan bool) {
+	fmt.Println("serverStart:", "serverStart called")
 	r := mux.NewRouter()
 	r.HandleFunc("/sched-dep", dep)
 	r.HandleFunc("/mark-stable", mstable)
@@ -532,7 +568,7 @@ func serverStart(c chan bool) {
 
 	err := s.ListenAndServe()
 	if err != nil {
-		fmt.Printf("Server failed: ", err.Error())
+		fmt.Printf("serverStart:", "Server failed: ", err.Error())
 	}
 	c <- true
 }
@@ -546,6 +582,7 @@ type Params struct {
 }
 
 func prioritize(bug map[string]interface{}) {
+	fmt.Println("prioritize:", "prioritize called")
 	// This regex matches any valid package atom as defined by the gentoo guidelines
 	// Writing inside `backticks` means a RAW string. Equivalent of python's r'raw_string'
 	k, _ := regexp.Compile(`\w+[\w.+-]*/\w+[\w.+-]*-[0-9]+(\.[0-9]+)*[a-z]?` +
@@ -557,13 +594,13 @@ func prioritize(bug map[string]interface{}) {
 
 	if cpv == "" {
 		// If it doesn't, we cannot do anything about this package
-		fmt.Println("Could not find a valid Package in summary", bug)
+		fmt.Println("prioritize:", "Could not find a valid Package in summary", bug)
 	} else {
 		// If it does, then we append the package to the priority list
 		// and trigger a TRAVIS build for that package
 		id := int(bug["id"].(float64))
 		priority = append(priority, Pair{cpv, id})
-		fmt.Println("Adding package", Pair{cpv, id}, "to priority list")
+		fmt.Println("prioritize:", "Adding package", Pair{cpv, id}, "to priority list")
 		trigger(cpv)
 	}
 	//savePriority("/shared/data")
@@ -571,6 +608,7 @@ func prioritize(bug map[string]interface{}) {
 
 // This function triggers a TRAVIS build on request
 func trigger(cpv string) {
+	fmt.Println("trigger:", "trigger called")
 	// There is another repository called TravisTrigger
 	// That repository is being monitored for commits by
 	// travis. this function creates a change in one of
@@ -598,12 +636,13 @@ func trigger(cpv string) {
 	check(err)
 
 	// Rejoice
-	fmt.Println("Triggered a Travis Build")
+	fmt.Println("trigger:", "Triggered a Travis Build")
 }
 
 // This function periodically polls bugzilla to find out if there are any new
 // STABLEREQ requests.
 func bugzillaPolling(c chan bool) {
+	fmt.Println("bugzillaPolling:", "bugzillaPolling called")
 	// URL to the REST api of bugzilla
 	uri := "https://bugs.gentoo.org/rest/bug"
 
@@ -627,10 +666,10 @@ func bugzillaPolling(c chan bool) {
 		var response map[string][]map[string]interface{}
 		_, err := napping.Get(uri, &payload, &response, nil)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("bugzillaPolling:", err)
 			continue
 		}
-		fmt.Println(response)
+		fmt.Println("bugzillaPolling:", response)
 
 		// Assume that the request is in fact a stabilization request
 		// if it contains words like stable or stabilize or request etc.
@@ -650,7 +689,7 @@ func bugzillaPolling(c chan bool) {
 			if send {
 				prioritize(k)
 			} else {
-				fmt.Println("This doesn't seem like a stable request")
+				fmt.Println("bugzillaPolling:", "This doesn't seem like a stable request")
 			}
 		}
 
@@ -661,15 +700,18 @@ func bugzillaPolling(c chan bool) {
 }
 
 func main() {
+	fmt.Println("main:", "main called")
 	rand.Seed(time.Now().UTC().UnixNano())
 	c := make(chan bool)
 	//go bugzillaPolling(c)
 	quick_ref = make(map[string]Tmp)
-	session, err := mgo.Dial("localhost")
+	host := os.Getenv("ORCA_DB_SERVICE_HOST")
+	session, err := mgo.Dial(host)
+	fmt.Println("main:", "Connected to database.", host)
 	check(err)
 	db = session.DB("data").C("database")
 	go serverStart(c)
 	go flagTrigger()
-	fmt.Println("Started server on port 80")
+	fmt.Println("main:", "Started server on port 80")
 	<-c
 }

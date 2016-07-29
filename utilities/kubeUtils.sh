@@ -48,3 +48,11 @@ lfl() {
     Name=$( echo "$started" | grep -i flag | grep -oP '^[^ ]*' )
     kubectl logs -f $Name
 }
+
+ldb() {
+    all=$(kubectl get pods | tail -n +2)
+    term=$(echo "$all" | grep 'Terminating')
+    started=$(comm -23 <(echo "$all") <(echo "$term"))
+    Name=$( echo "$started" | grep -i "db-" | grep -oP '^[^ ]*' )
+    kubectl logs -f $Name
+}

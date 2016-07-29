@@ -32,7 +32,7 @@ func sign_urls(secret string) string {
 	url := sign(expires, "PUT", container, base_object, secret)
 	return url
 }
-func get_temp_url() {
+func get_temp_url() string {
 	secret := os.Getenv("OS_SECRET_KEY")
 	return "https://swift-yyc.cloud.cybera.ca:8080" + (sign_urls(secret))
 }
