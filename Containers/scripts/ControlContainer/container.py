@@ -10,6 +10,7 @@ import requests
 import sys
 import socket
 import time
+import traceback
 import helpers
 import binascii
 from subprocess import PIPE, Popen, check_output
@@ -31,6 +32,15 @@ except KeyError:
 
 # Query active USE flags for current environment
 use = portage.settings["USE"].split()
+
+
+def _exit(retcode):
+    """
+    This is a wrapper over the original exit function to ensure that the
+    log files are written before the program exits
+    """
+    append_log("Container exited with a return code", retcode)
+    exit(retcode)
 
 
 def append_log(*args):
@@ -133,107 +143,113 @@ def dep_resolve(cpv, combo):
 
 
 if __name__ == "__main__":
-    buf = requests.get('http://162.246.156.59:32000/request-package').text
-    if buf == 'abort':
-        exit(0)
+    try:
+        buf = requests.get('http://162.246.156.59:32000/request-package').text
+        if buf == 'abort' or buf == 'None':
+            _print("The server doesn't have a package to be stabilized yet.")
+            _exit(0)
 
-    print("Server sent the package", buf)
-    cpv, use = buf.split("[;;]")
+        print("Server sent the package", buf)
+        cpv, use = buf.split("[;;]")
 
-    global folder_name
-    folder_name = "/root/build/"
+        global folder_name
+        folder_name = "/root/build/"
 
-    cpv = cpv.strip()
-    assert cpv != None
+        cpv = cpv.strip()
+        assert cpv != None
 
-    use_combo = use.strip()
-    assert use_combo != None
+        use_combo = use.strip()
+        assert use_combo != None
 
-    my_env = os.environ.copy()
-    if "USE" in my_env:
-        my_env["USE"] += " " + use_combo
-    else:
-        my_env["USE"] = portage.settings["USE"] + " " + use_combo
-    my_env["USE"] += " test "
+        my_env = os.environ.copy()
+        if "USE" in my_env:
+            my_env["USE"] += " " + use_combo
+        else:
+            my_env["USE"] = portage.settings["USE"] + " " + use_combo
+        my_env["USE"] += " test "
 
-    args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "=" + cpv]
-    unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
+        args = ['emerge', '-UuD', '--autounmask-write', "--backtrack=50", "=" + cpv]
+        unmask = Popen(args, env=my_env, stdout=PIPE, stderr=PIPE)
 
-    # This boolean flag takes care of running the emerge command a second
-    # time if the first run causes a change in config file changes due to
-    # autounmask-write
-    retry = False
+        # This boolean flag takes care of running the emerge command a second
+        # time if the first run causes a change in config file changes due to
+        # autounmask-write
+        retry = False
 
-    for line in iter(unmask.stdout.readline, b""):
-        append_log(line)
-        # If changes have been written to config files, then this condition
-        # should return true. #TODO Find a better way to do this.
-        if 'Autounmask changes' in line or re.search('needs? updating', line):
-            retry = True
-        if re.search(r'(keyword|USE) changes', line):
-            retry = True
-        line = line[:77] + re.sub('.', '.', line[77:80])
-        print(line, end='')
-
-    for line in iter(unmask.stderr.readline, b""):
-        append_log(line)
-        if 'Autounmask changes' in line or re.search('needs? updating', line):
-            retry = True
-        if re.search(r'(keyword|USE) changes', line):
-            retry = True
-        line = line[:77] + re.sub('.', '.', line[77:80])
-        print(line, end='')
-
-    unmask.wait()
-    _print("The return code was: ", unmask.returncode)
-
-    if retry:
-        # Use etc-update to commit the automask changes to file
-        yes = Popen(['yes'], stdout=PIPE)
-        etc = Popen(['etc-update', '--automode', '-3'],
-                    stdin=yes.stdout, stdout=PIPE, stderr=PIPE)
-
-        # Save and log the output
-        for line in iter(etc.stdout.readline, b""):
+        for line in iter(unmask.stdout.readline, b""):
             append_log(line)
+            # If changes have been written to config files, then this condition
+            # should return true. #TODO Find a better way to do this.
+            if 'Autounmask changes' in line or re.search('needs? updating', line):
+                retry = True
+            if re.search(r'(keyword|USE) changes', line):
+                retry = True
             line = line[:77] + re.sub('.', '.', line[77:80])
             print(line, end='')
 
-        # Save and log the output
-        for line in iter(etc.stderr.readline, b""):
+        for line in iter(unmask.stderr.readline, b""):
             append_log(line)
+            if 'Autounmask changes' in line or re.search('needs? updating', line):
+                retry = True
+            if re.search(r'(keyword|USE) changes', line):
+                retry = True
             line = line[:77] + re.sub('.', '.', line[77:80])
             print(line, end='')
-        etc.wait()
-        yes.terminate()
 
-        # Finally, run the build.
-        emm = Popen(['emerge', '-UuD', "--backtrack=50", "=" + cpv], stdout=PIPE,
-                    stderr=PIPE)
-        for line in iter(emm.stdout.readline, b""):
-            append_log(line)
-            line = line[:77] + re.sub('.', '.', line[77:80])
-            print(line, end=('' if line[-1] == '\n' else '\n'))
+        unmask.wait()
+        _print("The return code was: ", unmask.returncode)
 
-        for line in iter(emm.stderr.readline, b""):
-            append_log(line)
-            line = line[:77] + re.sub('.', '.', line[77:80])
-            print(line, end=('' if line[-1] == '\n' else '\n'))
+        if retry:
+            # Use etc-update to commit the automask changes to file
+            yes = Popen(['yes'], stdout=PIPE)
+            etc = Popen(['etc-update', '--automode', '-3'],
+                        stdin=yes.stdout, stdout=PIPE, stderr=PIPE)
 
-        # If return code != 0 (i.e. The build failed)
-        if emm.wait() != 0:
-            # Check to see if internet is working
-            if helpers.internet_working:
-                exit(emm.returncode)
-            else:
-                _print("Sorry, but you seem to have an internet failure")
-                exit(1)
-    else:
-        # Similarly for first case. If emerge failed, check if
-        # internet is working. If yes, then report the error
-        if unmask.returncode != 0:
-            if helpers.internet_working:
-                exit(unmask.returncode)
-            else:
-                _print("Sorry, but you seem to have an internet failure")
-                exit(1)
+            # Save and log the output
+            for line in iter(etc.stdout.readline, b""):
+                append_log(line)
+                line = line[:77] + re.sub('.', '.', line[77:80])
+                print(line, end='')
+
+            # Save and log the output
+            for line in iter(etc.stderr.readline, b""):
+                append_log(line)
+                line = line[:77] + re.sub('.', '.', line[77:80])
+                print(line, end='')
+            etc.wait()
+            yes.terminate()
+
+            # Finally, run the build.
+            emm = Popen(['emerge', '-UuD', "--backtrack=50", "=" + cpv], stdout=PIPE,
+                        stderr=PIPE)
+            for line in iter(emm.stdout.readline, b""):
+                append_log(line)
+                line = line[:77] + re.sub('.', '.', line[77:80])
+                print(line, end=('' if line[-1] == '\n' else '\n'))
+
+            for line in iter(emm.stderr.readline, b""):
+                append_log(line)
+                line = line[:77] + re.sub('.', '.', line[77:80])
+                print(line, end=('' if line[-1] == '\n' else '\n'))
+
+            # If return code != 0 (i.e. The build failed)
+            if emm.wait() != 0:
+                # Check to see if internet is working
+                if helpers.internet_working:
+                    _exit(emm.returncode)
+                else:
+                    _print("Sorry, but you seem to have an internet failure")
+                    _exit(1)
+        else:
+            # Similarly for first case. If emerge failed, check if
+            # internet is working. If yes, then report the error
+            if unmask.returncode != 0:
+                if helpers.internet_working:
+                    _exit(unmask.returncode)
+                else:
+                    _print("Sorry, but you seem to have an internet failure")
+                    _exit(1)
+    except Exception as e:
+        desired_trace = traceback.format_exc(sys.exc_info())
+        append_log(desired_trace)
+        _exit(1)

@@ -145,13 +145,12 @@ else
         mkdir -p ${cachePath}/portage ${cachePath}/build
         cd ${cachePath}/portage
         echo "Starting container to copy profiles"
+        $docker pull pallavagarwal07/gentoo-stabilization:client
         $docker run --rm pallavagarwal07/gentoo-stabilization:client \
             bash -c "cd /usr/portage; tar -cf - profiles" | tar --overwrite -xf -
         echo "Starting container to build the package"
         $docker run -it -v "${cachePath}/portage":/usr/portage \
             -v "${cachePath}/build":/root/build -e PERMUSER \
             pallavagarwal07/gentoo-stabilization:client bash /root/logger.sh
-        name="$(date +%Y%m%d-%H%M%S).tar.gz"
-        cd ${cachePath}
     fi
 fi
