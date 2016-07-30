@@ -522,6 +522,11 @@ func addpack(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, "1")
 }
 
+func tempUrl(w http.ResponseWriter, req *http.Request) {
+	url := get_temp_url()
+	io.WriteString(w, url)
+}
+
 func addCombo(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("addCombo:", "addCombo called")
 	pkg := req.URL.Query().Get("package")
@@ -556,6 +561,7 @@ func serverStart(c chan bool) {
 	//r.HandleFunc("/submit-log", submitlog)
 	r.HandleFunc("/add-package", addpack)
 	r.HandleFunc("/add-combo", addCombo)
+	r.HandleFunc("/temp-upload-url", tempUrl)
 
 	// Custom http server
 	s := &http.Server{
@@ -701,6 +707,7 @@ func bugzillaPolling(c chan bool) {
 
 func main() {
 	fmt.Println("main:", "main called")
+
 	rand.Seed(time.Now().UTC().UnixNano())
 	c := make(chan bool)
 	//go bugzillaPolling(c)

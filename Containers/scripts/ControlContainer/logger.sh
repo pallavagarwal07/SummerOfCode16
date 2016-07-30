@@ -21,3 +21,16 @@ python ../container.py $@
 
 chown -R $PERMUSER:$PERMUSER /usr/portage
 chown -R $PERMUSER:$PERMUSER /root/build
+
+cd /root/build
+mv `find /var/log/portage/ -maxdepth 1 -type f` /root/build/
+tar -czvf logs.tar.gz *
+
+tempURL="$(curl http://162.246.156.59:32000/temp-upload-url)"
+grep '401 Unauthorized' <(curl -X PUT -T logs.tar.gz "$tempURL")
+
+if [ $? -eq 0 ]; then
+    echo "The file couldn't be uploaded because server returned 401 Unauthorized"
+else
+    echo "Log files successfully uploaded to the server"
+fi

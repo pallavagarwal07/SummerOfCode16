@@ -103,16 +103,15 @@ spec:
               - name: gentoo-orca-server
                 image: pallavagarwal07/gentoo-stabilization:server
                 imagePullPolicy: Always
-                volumeMounts:
-                  - name: data-storage
-                    mountPath: /data/db
                 ports:
                   - containerPort: 80
+                volumeMounts:
+                  - name: data-storage
+                    mountPath: /secret
             volumes:
               - name: data-storage
-                cinder:
-                  volumeID: 0bd84553-abf2-4f0c-ae83-df8a162961d8
-                  fsType: ext4
+                hostPath:
+                    path: /home/ubuntu/shared/build
 
 ---
 apiVersion: extensions/v1beta1

@@ -4,7 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
-	"os"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +33,8 @@ func sign_urls(secret string) string {
 	return url
 }
 func get_temp_url() string {
-	secret := os.Getenv("OS_SECRET_KEY")
+	dat, err := ioutil.ReadFile("/secret/secret")
+	check(err)
+	secret := strings.TrimSpace(string(dat))
 	return "https://swift-yyc.cloud.cybera.ca:8080" + (sign_urls(secret))
 }
