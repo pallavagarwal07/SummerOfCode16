@@ -620,25 +620,49 @@ func trigger(cpv string) {
 	// travis. this function creates a change in one of
 	// the files (/triggers) and commits the changes to
 	// the repository, hence triggering the build
-	f, err := os.OpenFile("../TravisTrigger/triggers", os.O_APPEND|os.O_WRONLY, 0644)
+	dat, err := ioutil.ReadFile("/secret/auth")
 	check(err)
-	f.WriteString(cpv + "\n")
-	f.Close()
+	secret := strings.TrimSpace(string(dat))
+	//f, err := os.OpenFile("/code/trigger", os.O_APPEND|os.O_WRONLY, 0644)
+	//check(err)
+	//f.WriteString(cpv + "\n")
+	//f.Close()
 
 	// Create a string containing a path to that repository.
 	// Changes to that file were done above.
 	// Add and commit the file. And then push the repository
-	cwd := os.Getenv("PWD")
+	cmd1 := `
+		echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+		echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+		ping -c 2 8.8.8.8
+		ping -c 2 github.com
+	`
+	out, err := exec.Command("su", "-c", cmd1).CombinedOutput()
+	fmt.Println("trigger: ", string(out))
+
 	command := `
-		cd ` + cwd + `/../TravisTrigger;
+		cd /code
+		cat /etc/resolv.conf
+		echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+		echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+		ping -c 2 8.8.8.8
+		ping -c 2 github.com
+		git pull https://` + secret + `@github.com/pallavagarwal07/SummerOfCode16
+		git checkout -b trigger
+		git config --local user.email "unato@varstack.com"
+		git config --local user.name "Unato Bot"
+		echo "` + cpv + `" >> trigger
+		git add .
 		git commit -am 'Add new package for trigger'
-		git push origin master
+		git remote add origin https://` + secret + `@github.com/pallavagarwal07/SummerOfCode16
+		git push origin trigger
 		`
 
 	// The current script is being run as root. We don't want that to happen
-	// with the commits. Thus execute the command as user pallav, using the
-	// following syntax: `su -c "command" - pallav`
-	_, err = exec.Command("su", "-c", command, "-", "pallav").CombinedOutput()
+	// with the commits. Thus execute the command as user unato, using the
+	// following syntax: `su -c "command" - unato`
+	out, err = exec.Command("su", "-c", command, "-", "unato").CombinedOutput()
+	fmt.Println("trigger: ", string(out))
 	check(err)
 
 	// Rejoice
@@ -718,6 +742,7 @@ func main() {
 	check(err)
 	db = session.DB("data").C("database")
 	go serverStart(c)
+	go trigger("abc")
 	go flagTrigger()
 	fmt.Println("main:", "Started server on port 80")
 	<-c

@@ -7,10 +7,12 @@ COPY scripts/Server/*.go /go/src/gentoo-stable/
 # (You may fetch or manage dependencies here,
 # either manually or with a tool like "godep".)
 RUN mkdir -p /shared/data /shared/logs; \
-    echo "[]" > /shared/data/database; \
-    echo "[]" > /shared/data/priority; \
-    echo "{}" > /shared/data/unstable; \
-    echo "{}" > /shared/data/stable; \
+    mkdir -p '/code'; \
+    echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" >> /etc/resolv.conf; \
+    cd /code; \
+    git init; \
+    useradd unato; \
+    chown -R unato:unato /code; \
     go get "github.com/gorilla/mux"; \
     go get "github.com/jmcvetta/napping"; \
     go get "github.com/tj/go-dropbox"; \
