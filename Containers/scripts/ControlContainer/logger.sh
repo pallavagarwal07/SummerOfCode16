@@ -18,6 +18,7 @@ eix-update
 qlop    -luCv 2>&1 | tee emerge_history
 
 python ../container.py $@
+ret="$?"
 
 chown -R $PERMUSER:$PERMUSER /usr/portage
 chown -R $PERMUSER:$PERMUSER /root/build
@@ -31,6 +32,8 @@ grep '401 Unauthorized' <(curl -X PUT -T logs.tar.gz "$tempURL")
 
 if [ $? -eq 0 ]; then
     echo "The file couldn't be uploaded because server returned 401 Unauthorized"
+    exit 1000
 else
     echo "Log files successfully uploaded to the server"
+    exit $ret
 fi

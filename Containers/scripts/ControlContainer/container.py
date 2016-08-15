@@ -179,13 +179,13 @@ if __name__ == "__main__":
         for line in iter(unmask.stdout.readline, b""):
             append_log(line)
             # If changes have been written to config files, then this condition
-            # should return true. #TODO Find a better way to do this.
+            # should return true. TODO Find a better way to do this.
             if 'Autounmask changes' in line or re.search('needs? updating', line):
                 retry = True
             if re.search(r'(keyword|USE) changes', line):
                 retry = True
             line = line[:77] + re.sub('.', '.', line[77:80])
-            print(line, end='')
+            print(line, end=('' if line[-1] == '\n' else '\n'))
 
         for line in iter(unmask.stderr.readline, b""):
             append_log(line)
@@ -194,7 +194,7 @@ if __name__ == "__main__":
             if re.search(r'(keyword|USE) changes', line):
                 retry = True
             line = line[:77] + re.sub('.', '.', line[77:80])
-            print(line, end='')
+            print(line, end=('' if line[-1] == '\n' else '\n'))
 
         unmask.wait()
         _print("The return code was: ", unmask.returncode)

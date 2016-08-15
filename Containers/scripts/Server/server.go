@@ -127,7 +127,13 @@ func traverse(vertex bson.ObjectId, ancestor map[string]bson.ObjectId, visited m
 	fmt.Println("traverse:", "traverse called")
 	// visited map is used to check for disjoint trees only
 	var result *Node
-	db.Find(bson.M{"_id": vertex}).One(&result)
+	db.FindId(vertex).One(&result)
+
+	if result == nil {
+		fmt.Println("traverse: for _id", vertex, "nothing could be retrieved. Investigate!")
+		return
+	}
+
 	visited[result.Cpv] = true
 
 	var resArr []*Node
@@ -276,18 +282,22 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 // This function returns a list of all Leaf nodes which are marked
 // as "not yet stabilized" (state 1)
 func get_leaf_nodes(id bson.ObjectId, visited map[string]bool, serverLeaf bool) []*Node {
-	fmt.Println("get_leaf_nodes:", "get_leaf_nodes called")
-	// Count of unstabilized dependencies of Node (This node would
-	// be a leaf node only if unstable_dep = 0)
-	unstable_dep := 0
-
-	var vertex *Node
-	fmt.Println("g_l_n: ", "before crashing, id=", id)
-	db.FindId(id).One(&vertex)
 	// List of leaves in **this** subtree
 	leaves := make([]*Node, 0)
 	deps := make([]*Node, 0)
 
+	fmt.Println("get_leaf_nodes:", "get_leaf_nodes called")
+	// Count of unstabilized dependencies of Node (This node would
+	// be a leaf node only if unstable_dep = 0)
+	unstable_dep := 0
+	var vertex *Node
+	fmt.Println("g_l_n: ", "before crashing, id=", id)
+	db.FindId(id).One(&vertex)
+
+	if vertex == nil {
+		fmt.Println("g_l_n: for _id", id, "nothing could be retrieved. Investigate!")
+		return leaves
+	}
 	fmt.Println("g_l_n: the vertex found was:", vertex)
 
 	// If this package is itself not "unstabilized", then this
@@ -296,7 +306,7 @@ func get_leaf_nodes(id bson.ObjectId, visited map[string]bool, serverLeaf bool) 
 		return leaves
 	}
 
-	db.Find(bson.M{"_id": bson.M{"$in": vertex.Dep}}).Select(bson.M{"_id": 1, "Cpv": 1}).All(&deps)
+	db.Find(bson.M{"_id": bson.M{"$in": vertex.Dep}}).All(&deps)
 
 	// Iterate over the dependencies of this node, and update
 	// unstable_dep. Also, recursively find out the leaf nodes in
@@ -634,8 +644,6 @@ func trigger(cpv string) {
 	cmd1 := `
 		echo "nameserver 8.8.8.8" >> /etc/resolv.conf
 		echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-		ping -c 2 8.8.8.8
-		ping -c 2 github.com
 	`
 	out, err := exec.Command("su", "-c", cmd1).CombinedOutput()
 	fmt.Println("trigger: ", string(out))
@@ -643,11 +651,7 @@ func trigger(cpv string) {
 	command := `
 		cd /code
 		cat /etc/resolv.conf
-		echo "nameserver 8.8.8.8" >> /etc/resolv.conf
-		echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-		ping -c 2 8.8.8.8
-		ping -c 2 github.com
-		git pull https://` + secret + `@github.com/pallavagarwal07/SummerOfCode16
+		git pull https://` + secret + `@github.com/pallavagarwal07/SummerOfCode16 trigger
 		git checkout -b trigger
 		git config --local user.email "unato@varstack.com"
 		git config --local user.name "Unato Bot"
@@ -729,6 +733,13 @@ func bugzillaPolling(c chan bool) {
 	c <- true
 }
 
+func periodicTrigger() {
+	for true {
+		go trigger("abc")
+		time.Sleep(time.Minute * 15)
+	}
+}
+
 func main() {
 	fmt.Println("main:", "main called")
 
@@ -741,8 +752,8 @@ func main() {
 	fmt.Println("main:", "Connected to database.", host)
 	check(err)
 	db = session.DB("data").C("database")
+	go periodicTrigger()
 	go serverStart(c)
-	go trigger("abc")
 	go flagTrigger()
 	fmt.Println("main:", "Started server on port 80")
 	<-c

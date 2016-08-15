@@ -24,10 +24,6 @@ except KeyError:
 """Query active USE flags for current environment"""
 use = portage.settings["USE"].split()
 
-#TODO
-def uploadLog():
-    return
-
 def _exit(n):
     """
     Custom exit function that uploads the logs before exiting

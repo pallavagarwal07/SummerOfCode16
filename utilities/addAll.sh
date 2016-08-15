@@ -5,5 +5,5 @@ sed -ri 's/\/.*\//\//g' packages
 sed -ri 's/\.ebuild//g' packages
 for i in `cat packages`; do
     echo "$i"
-    curl -G 'http://162.246.156.136/add-package' -d 'package'="$i"
+    curl -G 'http://162.246.156.59:32000/add-package' -d 'package'="$i"
 done
