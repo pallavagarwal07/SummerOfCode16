@@ -27,7 +27,7 @@ cd /root/build
 mv `find /var/log/portage/ -maxdepth 1 -type f` /root/build/
 tar -czvf logs.tar.gz *
 
-tempURL="$(curl http://162.246.156.59:32000/temp-upload-url)"
+tempURL="$(curl http://gentoo.varstack.com:32000/temp-upload-url)"
 grep '401 Unauthorized' <(curl -X PUT -T logs.tar.gz "$tempURL")
 
 if [ $? -eq 0 ]; then

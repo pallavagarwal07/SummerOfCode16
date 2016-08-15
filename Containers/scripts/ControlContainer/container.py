@@ -147,7 +147,7 @@ if __name__ == "__main__":
     folder_name = "/root/build/"
 
     try:
-        buf = requests.get('http://162.246.156.59:32000/request-package').text
+        buf = requests.get('http://gentoo.varstack.com:32000/request-package').text
         if buf == 'abort' or buf == 'None':
             _print("The server doesn't have a package to be stabilized yet.")
             _exit(0)

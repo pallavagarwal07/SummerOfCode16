@@ -102,7 +102,7 @@ if __name__ == '__main__':
     # to be stabilized
     if len(sys.argv) < 2:
         _print("No package specified. Asking the server for one")
-        package_resp = requests.get("http://162.246.156.136/request-package")
+        package_resp = requests.get("http://gentoo.varstack.com:32000/request-package")
 
         if package_resp.status_code != 200:
             _print("Stabilization server offline or unaccessible. Exiting")
