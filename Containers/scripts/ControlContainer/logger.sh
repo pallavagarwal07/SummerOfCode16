@@ -14,7 +14,6 @@ mv /usr/portage/profiles /tmp/profiles
 emerge --sync 2>&1 | tee sync_logs
 mv /tmp/profiles /usr/portage/profiles
 emerge --info 2>&1 | tee emerge_info
-eix-update
 qlop    -luCv 2>&1 | tee emerge_history
 
 python ../container.py $@
@@ -24,7 +23,11 @@ chown -R $PERMUSER:$PERMUSER /usr/portage
 chown -R $PERMUSER:$PERMUSER /root/build
 
 cd /root/build
-mv `find /var/log/portage/ -maxdepth 1 -type f` /root/build/
+logs="$(find /var/log/portage/ -maxdepth 1 -type f)"
+
+if [ "$logs" != "" ]; then
+    mv `find /var/log/portage/ -maxdepth 1 -type f` /root/build/
+fi
 tar -czvf logs.tar.gz *
 
 tempURL="$(curl http://gentoo.varstack.com:32000/temp-upload-url)"
