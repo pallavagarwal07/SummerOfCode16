@@ -16,10 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/gorilla/mux"
 	"github.com/jmcvetta/napping"
+	"github.com/tj/go-dropbox"
 )
 
 // Instead of failing silently, crash
@@ -249,8 +251,8 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 	flags := strings.Split(req.URL.Query().Get("flags"), " ")
 	sort.Strings(flags)
 
-	db.Update(bson.M{"Cpv": pkg, "State": bson.M{"$ne": 2}}, bson.M{"$pull": bson.M{"UseFlags": flags}})
-	db.Update(bson.M{"Cpv": pkg, "$where": "UseFlags.length == 0"}, bson.M{"State": 0})
+	db.Update(bson.M{"Cpv": pack, "State": bson.M{"$ne": 2}}, bson.M{"$pull": bson.M{"UseFlags": flags}})
+	db.Update(bson.M{"Cpv": pack, "$where": "UseFlags.length == 0"}, bson.M{"State": 0})
 	db.Update(bson.M{"Cpv": pack}, bson.M{"State": 0})
 	fmt.Println("mstable:", "Got request to mark", pack, "as stable")
 
@@ -267,9 +269,8 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 
 	// Increment the unstable count (We can't rely on a single
 	// PC's claim)
-	unstable[pack]++
 	fmt.Println("mblock:", "Got request to mark", pack, "as unstable")
-	db.Update(bson.M{"Cpv": pkg, "State": bson.M{"$ne": 2}}, bson.M{"State": 3})
+	db.Update(bson.M{"Cpv": pack, "State": bson.M{"$ne": 2}}, bson.M{"State": 3})
 
 	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 3}
 	quick_ref[req.URL.Query().Get("id")] = immediate_node
