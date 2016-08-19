@@ -149,7 +149,7 @@ else
         $docker run --rm pallavagarwal07/gentoo-stabilization:client \
             bash -c "cd /usr/portage; tar -cf - profiles" | tar --overwrite -xf -
         echo "Starting container to build the package"
-        $docker run -it -v "${cachePath}/portage":/usr/portage \
+        $docker run -t -v "${cachePath}/portage":/usr/portage \
             -v "${cachePath}/build":/root/build -e PERMUSER \
             pallavagarwal07/gentoo-stabilization:client bash /root/logger.sh
     fi
