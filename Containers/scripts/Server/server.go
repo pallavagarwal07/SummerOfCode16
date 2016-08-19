@@ -12,15 +12,14 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
-	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/gorilla/mux"
 	"github.com/jmcvetta/napping"
-	"github.com/tj/go-dropbox"
 )
 
 // Instead of failing silently, crash
@@ -246,11 +245,12 @@ func mstable(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("mstable:", "mstable called")
 
 	// Get the appropriate package from the GET parameters
-	pack_b64 := req.URL.Query().Get("package")
+	pack := req.URL.Query().Get("package")
+	flags := strings.Split(req.URL.Query().Get("flags"), " ")
+	sort.Strings(flags)
 
-	// Base64 decode the package name
-	pack, _ := b64decode(pack_b64)
-
+	db.Update(bson.M{"Cpv": pkg, "State": bson.M{"$ne": 2}}, bson.M{"$pull": bson.M{"UseFlags": flags}})
+	db.Update(bson.M{"Cpv": pkg, "$where": "UseFlags.length == 0"}, bson.M{"State": 0})
 	db.Update(bson.M{"Cpv": pack}, bson.M{"State": 0})
 	fmt.Println("mstable:", "Got request to mark", pack, "as stable")
 
@@ -263,15 +263,13 @@ func mblock(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("mblock:", "mblock called")
 
 	// Get the appropriate package from the GET parameters
-	pack_b64 := req.URL.Query().Get("package")
-
-	// Base64 decode the package name
-	pack, _ := b64decode(pack_b64)
+	pack := req.URL.Query().Get("package")
 
 	// Increment the unstable count (We can't rely on a single
 	// PC's claim)
 	unstable[pack]++
 	fmt.Println("mblock:", "Got request to mark", pack, "as unstable")
+	db.Update(bson.M{"Cpv": pkg, "State": bson.M{"$ne": 2}}, bson.M{"State": 3})
 
 	immediate_node := Tmp{Cpv: pack, Indices: make([]int, 0), State: 3}
 	quick_ref[req.URL.Query().Get("id")] = immediate_node
@@ -545,13 +543,14 @@ func addCombo(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("Combo wants to add", pkg, "with", flags)
 
 	combo := strings.Split(flags, " ")
+	sort.Strings(combo)
 
 	var res []*Node
 
-	db.Find(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}).All(&res)
+	db.Find(bson.M{"Cpv": pkg, "State": bson.M{"$ne": 2}}).All(&res)
 	fmt.Println("The update seems to be applied to: ", res, "for combo", combo)
-	db.Update(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}, bson.M{"$push": bson.M{"UseFlags": combo}})
-	db.Find(bson.M{"Cpv": pkg, "NumStable": bson.M{"$ne": 2}}).All(&res)
+	db.Update(bson.M{"Cpv": pkg, "State": bson.M{"$ne": 2}}, bson.M{"$push": bson.M{"UseFlags": combo}})
+	db.Find(bson.M{"Cpv": pkg, "State": bson.M{"$ne": 2}}).All(&res)
 	fmt.Println("The update seems to have been applied to: ", res[0])
 
 	io.WriteString(w, "1")

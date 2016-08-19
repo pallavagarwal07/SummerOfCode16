@@ -40,6 +40,15 @@ def _exit(retcode):
     log files are written before the program exits
     """
     append_log("Container exited with a return code", retcode)
+    cpv, use = buf.split("[;;]")
+
+    payload = {'package': cpv, 'flags': use}
+    if retcode != 2 and retcode != 0:
+        r = requests.get("http://gentoo.varstack.com:32000/mark-unstable", params=payload)
+        print(r.text)
+    elif retcode == 0:
+        r = requests.get("http://gentoo.varstack.com:32000/mark-stable", params=payload)
+        print(r.text)
     exit(retcode)
 
 
@@ -147,6 +156,7 @@ if __name__ == "__main__":
     folder_name = "/root/build/"
 
     try:
+        global buf
         buf = requests.get('http://gentoo.varstack.com:32000/request-package').text
         if buf == 'abort' or buf == 'None':
             _print("The server doesn't have a package to be stabilized yet.")
@@ -239,7 +249,7 @@ if __name__ == "__main__":
                     _exit(emm.returncode)
                 else:
                     _print("Sorry, but you seem to have an internet failure")
-                    _exit(1)
+                    _exit(2)
         else:
             # Similarly for first case. If emerge failed, check if
             # internet is working. If yes, then report the error
@@ -248,7 +258,7 @@ if __name__ == "__main__":
                     _exit(unmask.returncode)
                 else:
                     _print("Sorry, but you seem to have an internet failure")
-                    _exit(1)
+                    _exit(2)
     except Exception as e:
         desired_trace = traceback.format_exc(sys.exc_info())
         append_log(desired_trace)
