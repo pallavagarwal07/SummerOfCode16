@@ -1,9 +1,0 @@
-sudo: required
-language: python
-services:
-    - docker
-script:
-    - touch ~/.gentoo-ci
-    - echo -e "docker=docker\ncache=1\ncachePath=$HOME/cacheClient" >> ~/.gentoo-ci
-    - cd $TRAVIS_BUILD_DIR
-    - bash Containers/scripts/ControlContainer/wrapper.sh
