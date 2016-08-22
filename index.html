@@ -33,7 +33,7 @@
       <section id="main_content" class="inner">
         <h1>
 <a id="google-summer-of-code-16" class="anchor" href="#google-summer-of-code-16" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Google Summer Of Code '16</h1>
-<img src="images/gentoo.png" align="right"/>
+
 <p><a href="https://gitter.im/pallavagarwal07/SummerOfCode16?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://badges.gitter.im/pallavagarwal07/SummerOfCode16.svg" alt="Join the chat at https://gitter.im/pallavagarwal07/SummerOfCode16"></a></p>
 
 <p><strong>ALL the commits in this repository, as well as all the pushes to the
@@ -85,6 +85,37 @@ soon as the backward incompatible changes to the server are done, since the
 ebuild may not be fit to use just now.</p>
 
 <h2>
+<a id="repository-structure" class="anchor" href="#repository-structure" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Repository Structure</h2>
+
+<pre><code>├── Containers
+│   ├── Dockerfile-(Client,Server,Solver)
+│   ├── etc_portage
+│   │   └── .................. :: Contents for /etc/portage in container
+│   ├── Orca-Deployment.yml
+│   ├── scripts
+│   │   ├── ControlContainer
+│   │   │   └── .............. :: Client container files
+│   │   ├── FlagGenerator
+│   │   │   └── .............. :: Flag, Dep Solver container files
+│   │   └── Server
+│   │       └── .............. :: Server (graph container) files
+│   └── wrapper.sh ........... :: WRAPPER script for client (symlinked)
+├── Documents
+│   └── ...................... :: Proposal, arch diagrams, minutes of meeting
+├── utilities
+│   ├── addAll.sh
+│   ├── bugzillaRESTapi
+│   │   ├── bug_file.py
+│   │   └── bugzilla.py
+│   ├── ebuilds .............. :: Ebuilds of client for Gentoo users
+│   │   └── orca_ci-0.1.ebuild
+│   ├── kubeUtils.sh
+│   └── packages
+├── LICENSE
+└── README.md
+</code></pre>
+
+<h2>
 <a id="methodology" class="anchor" href="#methodology" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Methodology</h2>
 
 <p>Oftentimes it is valuable to know if a package is failing to build, even if the
@@ -110,16 +141,16 @@ While the server, to function properly needs a Directed Acyclic Graph. Consider
 the following:</p>
 
 <pre><code>
-                                    A                                          
-                                  /   \                                        
-                                 ↙     ↘                                       
-                                B       C                                      
-                               / \                                             
-                              ↙   ↘                                            
-                             D     C                                           
-                            /                                               
-                           ↙                                          
-                          A                                                    
+                                    A
+                                  /   \
+                                 ↙     ↘
+                                B       C
+                               / \
+                              ↙   ↘
+                             D     C
+                            /
+                           ↙
+                          A
 </code></pre>
 
 <p>There are two repetitions in the above graph, <code>A</code> and <code>C</code>. However <code>C</code> doesn't
@@ -129,16 +160,16 @@ resolve such cycles, the server replace one of the nodes with a new "fake"
 node. This makes the above tree.</p>
 
 <pre><code>
-                                    A                                          
-                                  /   \                                        
-                                 ↙     ↘                                       
-                                B       C                                      
-                               / \                                             
-                              ↙   ↘                                            
-                             D     C                                           
-                            /                                               
-                           ↙                                          
-                          A*                                                    
+                                    A
+                                  /   \
+                                 ↙     ↘
+                                B       C
+                               / \
+                              ↙   ↘
+                             D     C
+                            /
+                           ↙
+                          A*
 </code></pre>
 
 <p>This again makes the graph acyclic. Starred nodes are assumed to be stable
@@ -190,11 +221,11 @@ containers. The "Server", "Flag Generator" and "Dependency Solver". There is
 also a mongoDB container which stores all of the information for the dependency
 graph.</p>
 
-<p>A Kubernetes Service surrounds each of "Flag Generator" and "Dependency Solver" 
+<p>A Kubernetes Service surrounds each of "Flag Generator" and "Dependency Solver"
 which means that multiple containers of each can hide behind those services and
 a load balancer would distribute the incoming requests to the containers.</p>
 
-<p><img src="https://github.com/pallavagarwal07/SummerOfCode16/raw/0919fd5d2e4b2e5fa5563c6692abcb42245fe8fd/Documents/Arch_Diagram_17_Jul.jpg" alt="Server Architecture diagram"></p>
+<p><img src="https://github.com/pallavagarwal07/SummerOfCode16/raw/654abc386a87ba112c6f36c1517ab39342687d2f/Documents/Arch_Diagram_17_Jul.jpg" alt="Server Architecture diagram"></p>
 
 <h2>
 <a id="stabilization-procedure" class="anchor" href="#stabilization-procedure" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Stabilization procedure</h2>
@@ -202,7 +233,7 @@ a load balancer would distribute the incoming requests to the containers.</p>
 <p>When a client runs the wrapper script for stabilization, the client spawns a
 docker container with a minimal gentoo system. The system requests a package
 name from the server. When faced with this request, server evaluates the DAG
-of the packages and returns a leaf node. </p>
+of the packages and returns a leaf node.</p>
 
 <p>Note that every package node has multiple USE flag combinations set in. The
 server selects one, and sends the data to the client. The client sets portage
@@ -215,6 +246,30 @@ tarred, and uploaded to the server.</p>
 openstack storage, and gives it to the client. Once the logs are uploaded, the
 server marks the package in the tree STABLE/UNSTABLE, depending on what was
 reported.</p>
+
+<h2>
+<a id="deploy-your-own-stabilization-server" class="anchor" href="#deploy-your-own-stabilization-server" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Deploy your own stabilization server</h2>
+
+<p>Since the server is built completely on Kubernetes, it is very easy to deploy
+on a separate machine. However, there are a couple of problems one must be
+aware of.</p>
+
+<ol>
+<li>Trigger auth: To trigger builds in Travis CI, the server authenticates with
+github to make a dummy commit in <code>trigger</code> branch of the repository. The key
+for this authentication is stored in a folder on the VM with the filename
+"auth". This folder is mounted to <code>/secret</code> directory on the server
+container.</li>
+<li>Openstack storage: The server generates Temp-URLs for the clients so that
+the clients may use the swift storage to store the build logs. To generate
+the temp-url, we need the swift openstack secret. This secret is also stored
+in the same directory as mentioned above with the filename <code>secret</code>.</li>
+</ol>
+
+<p>Once the above two are taken care of, follow the instructions on the Kubernetes
+website to set up a kubernetes cluster, depending on the platform you have.
+After that, simply run <code>kubectl create -f $REPO/Containers/Orca-Deployment.yml</code>
+where <code>$REPO</code> is the path to the repository and it should start the server.</p>
 
 <h2>
 <a id="scope-and-future-work" class="anchor" href="#scope-and-future-work" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Scope and future work</h2>
