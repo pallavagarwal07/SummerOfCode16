@@ -155,6 +155,8 @@ func traverse(vertex bson.ObjectId, ancestor map[string]bson.ObjectId, visited m
 			db.Find(bson.M{"Cpv": node.Cpv, "State": 2}).One(&node)
 			db.Update(bson.M{"_id": vertex}, bson.M{"$pull": bson.M{"Dep": a}})
 			db.Update(bson.M{"_id": vertex}, bson.M{"$push": bson.M{"Dep": node.Id}})
+
+			fmt.Println("Cycle broken with node ID", node.Id)
 		} else {
 			// else, mark current as ancestor, traverse child
 			// and unmark as ancestor
@@ -290,7 +292,6 @@ func get_leaf_nodes(id bson.ObjectId, visited map[string]bool, serverLeaf bool) 
 	// be a leaf node only if unstable_dep = 0)
 	unstable_dep := 0
 	var vertex *Node
-	fmt.Println("g_l_n: ", "before crashing, id=", id)
 	db.FindId(id).One(&vertex)
 
 	if vertex == nil {
@@ -555,6 +556,20 @@ func addCombo(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("The update seems to have been applied to: ", res[0])
 
 	io.WriteString(w, "1")
+	evaluate()
+}
+
+func status(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("status:", "status called")
+	pkg := req.URL.Query().Get("package")
+	var res []*Node
+
+	db.Find(bson.M{"Cpv": pkg}).All(&res)
+
+	b, err := json.Marshal(res)
+	check(err)
+
+	io.WriteString(w, string(b))
 }
 
 // Function to handle and route all requests.
@@ -565,10 +580,10 @@ func serverStart(c chan bool) {
 	fmt.Println("serverStart:", "serverStart called")
 	r := mux.NewRouter()
 	r.HandleFunc("/sched-dep", dep)
+	r.HandleFunc("/status", status)
 	r.HandleFunc("/mark-stable", mstable)
 	r.HandleFunc("/mark-blocked", mblock)
 	r.HandleFunc("/request-package", rpack)
-	//r.HandleFunc("/submit-log", submitlog)
 	r.HandleFunc("/add-package", addpack)
 	r.HandleFunc("/add-combo", addCombo)
 	r.HandleFunc("/temp-upload-url", tempUrl)
