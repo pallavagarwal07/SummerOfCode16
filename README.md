@@ -38,6 +38,36 @@ If you are on Gentoo Operating system, you can use the ebuild in the folder
 soon as the backward incompatible changes to the server are done, since the
 ebuild may not be fit to use just now.
 
+## Repository Structure
+```
+├── Containers
+│   ├── Dockerfile-(Client,Server,Solver)
+│   ├── etc_portage
+│   │   └── .................. :: Contents for /etc/portage in container
+│   ├── Orca-Deployment.yml
+│   ├── scripts
+│   │   ├── ControlContainer
+│   │   │   └── .............. :: Client container files
+│   │   ├── FlagGenerator
+│   │   │   └── .............. :: Flag, Dep Solver container files
+│   │   └── Server
+│   │       └── .............. :: Server (graph container) files
+│   └── wrapper.sh ........... :: WRAPPER script for client (symlinked)
+├── Documents
+│   └── ...................... :: Proposal, arch diagrams, minutes of meeting
+├── utilities
+│   ├── addAll.sh
+│   ├── bugzillaRESTapi
+│   │   ├── bug_file.py
+│   │   └── bugzilla.py
+│   ├── ebuilds .............. :: Ebuilds of client for Gentoo users
+│   │   └── orca_ci-0.1.ebuild
+│   ├── kubeUtils.sh
+│   └── packages
+├── LICENSE
+└── README.md
+```
+
 ## Methodology
 Oftentimes it is valuable to know if a package is failing to build, even if the
 exact reason for the failure is not know. The whole of Orca is built on this
@@ -60,18 +90,18 @@ While the server, to function properly needs a Directed Acyclic Graph. Consider
 the following:
 
 ```
-                                                                               
-                                    A                                          
-                                  /   \                                        
-                                 ↙     ↘                                       
-                                B       C                                      
-                               / \                                             
-                              ↙   ↘                                            
-                             D     C                                           
-                            /                                               
-                           ↙                                          
-                          A                                                    
-```                                                                               
+
+                                    A
+                                  /   \
+                                 ↙     ↘
+                                B       C
+                               / \
+                              ↙   ↘
+                             D     C
+                            /
+                           ↙
+                          A
+```
 
 There are two repetitions in the above graph, `A` and `C`. However `C` doesn't
 actually give us any trouble. Because the tree still remains acyclic (since it
@@ -80,18 +110,18 @@ resolve such cycles, the server replace one of the nodes with a new "fake"
 node. This makes the above tree.
 
 ```
-                                                                               
-                                    A                                          
-                                  /   \                                        
-                                 ↙     ↘                                       
-                                B       C                                      
-                               / \                                             
-                              ↙   ↘                                            
-                             D     C                                           
-                            /                                               
-                           ↙                                          
-                          A*                                                    
-```                                                                               
+
+                                    A
+                                  /   \
+                                 ↙     ↘
+                                B       C
+                               / \
+                              ↙   ↘
+                             D     C
+                            /
+                           ↙
+                          A*
+```
 
 This again makes the graph acyclic. Starred nodes are assumed to be stable
 (i.e.  the fake nodes, not the top level `A` node) and are never sent for
@@ -136,7 +166,7 @@ containers. The "Server", "Flag Generator" and "Dependency Solver". There is
 also a mongoDB container which stores all of the information for the dependency
 graph.
 
-A Kubernetes Service surrounds each of "Flag Generator" and "Dependency Solver" 
+A Kubernetes Service surrounds each of "Flag Generator" and "Dependency Solver"
 which means that multiple containers of each can hide behind those services and
 a load balancer would distribute the incoming requests to the containers.
 
@@ -146,7 +176,7 @@ a load balancer would distribute the incoming requests to the containers.
 When a client runs the wrapper script for stabilization, the client spawns a
 docker container with a minimal gentoo system. The system requests a package
 name from the server. When faced with this request, server evaluates the DAG
-of the packages and returns a leaf node. 
+of the packages and returns a leaf node.
 
 Note that every package node has multiple USE flag combinations set in. The
 server selects one, and sends the data to the client. The client sets portage

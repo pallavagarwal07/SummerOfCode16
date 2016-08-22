@@ -22,6 +22,9 @@ log = []
 
 global uniq_code
 global folder_name
+global buf
+
+buf = ""
 uniq_code = ""
 
 # Save a reference to the portage tree
