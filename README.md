@@ -191,6 +191,27 @@ server marks the package in the tree STABLE/UNSTABLE, depending on what was
 reported.
 
 
+## Deploy your own stabilization server
+Since the server is built completely on Kubernetes, it is very easy to deploy
+on a separate machine. However, there are a couple of problems one must be
+aware of.
+
+1. Trigger auth: To trigger builds in Travis CI, the server authenticates with
+   github to make a dummy commit in `trigger` branch of the repository. The key
+   for this authentication is stored in a folder on the VM with the filename
+   "auth". This folder is mounted to `/secret` directory on the server
+   container.
+2. Openstack storage: The server generates Temp-URLs for the clients so that
+   the clients may use the swift storage to store the build logs. To generate
+   the temp-url, we need the swift openstack secret. This secret is also stored
+   in the same directory as mentioned above with the filename `secret`.
+
+Once the above two are taken care of, follow the instructions on the Kubernetes
+website to set up a kubernetes cluster, depending on the platform you have.
+After that, simply run `kubectl create -f $REPO/Containers/Orca-Deployment.yml`
+where `$REPO` is the path to the repository and it should start the server.
+
+
 ## Scope and future work
 Work on this project is far from over. The server currently can help stabilize
 packages based on USE flags only. There are a lot more variables involved when
