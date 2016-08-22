@@ -37,7 +37,7 @@
 <p><a href="https://gitter.im/pallavagarwal07/SummerOfCode16?utm_source=badge&amp;utm_medium=badge&amp;utm_campaign=pr-badge&amp;utm_content=badge"><img src="https://badges.gitter.im/pallavagarwal07/SummerOfCode16.svg" alt="Join the chat at https://gitter.im/pallavagarwal07/SummerOfCode16"></a></p>
 
 <p><strong>ALL the commits in this repository, as well as all the pushes to the
-following docker repositories was done as a part of Google Summer of Code
+following docker repositories were done as a part of Google Summer of Code
 2016</strong></p>
 
 <ul>
@@ -63,21 +63,18 @@ human intervention.</p>
 <h2>
 <a id="result" class="anchor" href="#result" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Result</h2>
 
-<p>During this project, I built Orca, a continuous build and stabilization engine
-that automatically tries to find out the packages with broken dependencies, or
-code. Not just that, it is possible for any user to install the stabilization
-client to help in the stabilization process, and all the result of the
-stabilization calls is stored at a single place on the server.</p>
+<p>During this project, I built Orca, a continuous build and stabilization
+engine that automatically tries to find out the packages with
+build/compile/test errors in the gentoo portage tree. It is also possible for
+any user to install the client to help in the stabilization process.
+All the results of the build are stored at a single place on the server.</p>
 
 <h2>
 <a id="usage" class="anchor" href="#usage" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Usage:</h2>
 
-<h3>
-<a id="tldr" class="anchor" href="#tldr" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>TL;DR</h3>
-
 <p>You can help in the stabilization of Gentoo packages by downloading the file
-<code>wrapper.sh</code> from the repository, and running it. Please note that you need
-docker installed to use the stabilization container.</p>
+<code>orca-client</code> from the repository, and running it. Please note that
+you need docker installed to use the stabilization container.</p>
 
 <p>If you are on Gentoo Operating system, you can use the ebuild in the folder
 <code>utilities/ebuilds/</code>. This ebuild will be added to the Gentoo Portage tree as
@@ -99,7 +96,7 @@ ebuild may not be fit to use just now.</p>
 │   │   │   └── .............. :: Flag, Dep Solver container files
 │   │   └── Server
 │   │       └── .............. :: Server (graph container) files
-│   └── wrapper.sh ........... :: WRAPPER script for client (symlinked)
+│   └── orca-client .......... :: WRAPPER script for client (symlinked)
 ├── Documents
 │   └── ...................... :: Proposal, arch diagrams, minutes of meeting
 ├── utilities
@@ -118,26 +115,27 @@ ebuild may not be fit to use just now.</p>
 <h2>
 <a id="methodology" class="anchor" href="#methodology" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Methodology</h2>
 
-<p>Oftentimes it is valuable to know if a package is failing to build, even if the
-exact reason for the failure is not know. The whole of Orca is built on this
+<p>Often it is valuable to know if a package is failing to build, even if the
+exact reason for the failure is not known. The whole of Orca is built on this
 mindset, with the main task of indicating an error if it exists instead of
 trying to figure out why it exists.</p>
 
-<p>Orca consists of two parts. The server and the client. Both play a really
+<p>Orca consists of two parts. The server and the client. Both play an
 important role in the stabilization process.</p>
 
 <h3>
 <a id="server" class="anchor" href="#server" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Server:</h3>
 
-<p>The server is responsible of maintaining a database of all the packages that
-have to be or have been stabilized. But it isn't enough to just have all the
-packages in a dump. A package cannot be stabilized until all its dependencies
-have been stabilized.</p>
+<p>The server hosts a database of all the packages that have been
+stabilized/need to be stabilized. It recieves requests from the client, and
+orchestrates the stabilization request jobs. But it isn't enough to just have
+all the packages in a dump. A package cannot be stabilized until all its
+dependencies have been stabilized.</p>
 
 <p>To get around this problem, the server maintains a tree type structure of all
 packages. Obviously, the dependencies occur as children in the tree. Doing this
 isn't as easy at it seems, because packages often have circular dependencies.
-While the server, to function properly needs a Directed Acyclic Graph. Consider
+The server to function properly, needs a Directed Acyclic Graph. Consider
 the following:</p>
 
 <pre><code>
@@ -182,9 +180,9 @@ stabilization.</p>
 <h2>
 <a id="use-flags-and-combinations" class="anchor" href="#use-flags-and-combinations" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>USE flags and combinations</h2>
 
-<p>Find the main article <a href="https://www.varstack.com/2016/05/13/SAT-Solver/">HERE</a></p>
+<p>Find the main article <a href="https://github.com/pallavagarwal07/SummerOfCode16/blob/997078ebbf1aa86ba17fa53e400e4c99d7d640b7/Documents/SAT-Solver.md">HERE</a></p>
 
-<p>Gentoo Packages are not all built with the same settings, and the users have
+<p>Gentoo Packages are not all built with the same settings, and users have
 the ability to customize their build with a variety of USE flags (like on-off
 switches for various features). This gives the users unparalleled control, and
 is one of the most inviting features of the Gentoo Operating System.</p>
@@ -195,8 +193,8 @@ build the package. The server takes a shortcut, and builds each package with at
 most 4 different combinations of USE flags.</p>
 
 <ol>
-<li>Min number of USE flags possible</li>
-<li>Max number of USE flags possible</li>
+<li>No USE flags are set</li>
+<li>All USE flags are set</li>
 <li>Random combination not present in above two</li>
 <li>Random combination not present in above three</li>
 </ol>
@@ -216,19 +214,26 @@ cause.</p>
 <h2>
 <a id="server-architecture" class="anchor" href="#server-architecture" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Server Architecture</h2>
 
-<p>The server uses Kubernetes for orchestration. The server runs three primary
-containers. The "Server", "Flag Generator" and "Dependency Solver". There is
-also a mongoDB container which stores all of the information for the dependency
-graph.</p>
+<p>The server uses Kubernetes for orchestration. Kubernetes is an open-source
+system for automating deployment, scaling, and management of containerized
+applications. You can read more about it <a
+                                                                                                                   href="http://kubernetes.io/">here</a></p>
 
-<p>A Kubernetes Service surrounds each of "Flag Generator" and "Dependency Solver"
-which means that multiple containers of each can hide behind those services and
-a load balancer would distribute the incoming requests to the containers.</p>
+<p>The server runs three docker containers: "Server", "Flag Generator" and
+"Dependency Solver". There is also a mongoDB container which stores all of the
+information for the dependency graph.</p>
 
-<p><img src="https://github.com/pallavagarwal07/SummerOfCode16/raw/654abc386a87ba112c6f36c1517ab39342687d2f/Documents/Arch_Diagram_17_Jul.jpg" alt="Server Architecture diagram"></p>
+<p>A Kubernetes Service surrounds each of "Flag Generator" and "Dependency
+Solver" which means that multiple containers of each can hide behind those
+services and a load balancer would distribute the incoming requests to the
+containers.</p>
+
+<p><a href="https://github.com/pallavagarwal07/SummerOfCode16/raw/654abc386a87ba112c6f36c1517ab39342687d2f/Documents/Arch_Diagram_17_Jul.jpg"><img src="https://github.com/pallavagarwal07/SummerOfCode16/raw/654abc386a87ba112c6f36c1517ab39342687d2f/Documents/Arch_Diagram_17_Jul.jpg" alt="Server Architecture diagram"></a></p>
 
 <h2>
-<a id="stabilization-procedure" class="anchor" href="#stabilization-procedure" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Stabilization procedure</h2>
+<a id="stabilization-procedure" class="anchor" href="#stabilization-procedure" aria-hidden="true">
+    <span aria-hidden="true" class="octicon octicon-link">
+    </span></a>Stabilization procedure</h2>
 
 <p>When a client runs the wrapper script for stabilization, the client spawns a
 docker container with a minimal gentoo system. The system requests a package
@@ -240,12 +245,34 @@ server selects one, and sends the data to the client. The client sets portage
 settings to those USE flags and runs the merge of that package. The client
 merge stops in case of any errors, or continues till the build is over in case
 there aren't any. After the build, all the logs, as well as the build output is
-tarred, and uploaded to the server.</p>
+tarred, and uploaded to an Openstack swift storage.</p>
 
 <p>For the upload request, server generates a time limited upload token for the
 openstack storage, and gives it to the client. Once the logs are uploaded, the
 server marks the package in the tree STABLE/UNSTABLE, depending on what was
 reported.</p>
+
+<h2>
+<a id="automated-builds-with-travis" class="anchor" href="#automated-builds-with-travis" aria-hidden="true">
+    <span aria-hidden="true" class="octicon octicon-link">
+    </span></a>Automated Builds with Travis</h2>
+
+    <p>
+    Travis CI is a service that allows code to be tested on every push by
+    running it on their server with a predefined set of parameters. Orca
+    exploits this, by using the service to build Gentoo packages as a part of a
+    client's continuous integration.</p>
+
+    <p>The repository has a separate branch <code>trigger</code>. Whenever a
+    Travis build needs to be triggered, the server makes a dummy commit on this
+    branch. Travis detects this, and runs orca-client as a part of its
+    continuous integration. Thus, for every trigger one package-USE flag
+    combination can be tested.  </p>
+
+    <p> There are some limits to Travis's capabilities, including time limit
+    (around 50 min), size of output log, number of concurrent threads (max 2),
+    however, it works well for many of our purposes. Currently, the server is
+    configured to trigger Travis builds every 15 minutes.</p>
 
 <h2>
 <a id="deploy-your-own-stabilization-server" class="anchor" href="#deploy-your-own-stabilization-server" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Deploy your own stabilization server</h2>
@@ -271,14 +298,28 @@ website to set up a kubernetes cluster, depending on the platform you have.
 After that, simply run <code>kubectl create -f $REPO/Containers/Orca-Deployment.yml</code>
 where <code>$REPO</code> is the path to the repository and it should start the server.</p>
 
+<p>The server, by default exposes the port 32000, on which all the requests are made
+by the client. This and all other configuration can be changed from inside kubernets
+config files. There are a couple of scripts in <code>utilities</code> directory
+in kubeUtils.sh, which can be modified according to the user's needs to make usage
+of <code>kubectl</code> command line a lot more convinient.</p>
+
+<p>If the logs show the flag solver crashing on request sending, it is a bug of
+kubernetes or that of our config files. Stopping and restarting the services
+seems to work when this happens. This indicates that either the order of
+services spawn somehow affects the bridge network created between the container
+services, or it is indeed a bug in k8s. Note that since services(not pods) are
+created instantly, it shouldn't depend on order.</p>
+
 <h2>
 <a id="scope-and-future-work" class="anchor" href="#scope-and-future-work" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Scope and future work</h2>
 
-<p>Work on this project is far from over. The server currently can help stabilize
-packages based on USE flags only. There are a lot more variables involved when
-working with Gentoo. Things like architecture, python_targets, ruby_targets can
-still cause unforeseen problems, and the task is to modify the server to make
-the testing generic, irrespective of what the factors of testing be.</p>
+<p>Work on this project is far from over. The server currently can help
+stabilize packages based on USE flags only. There are many more variables
+involved when working with Gentoo. Things like architecture, python_targets,
+ruby_targets can still cause unforeseen problems, and the task is to modify the
+server to make the testing generic, irrespective of what the factors of testing
+be.</p>
 
 <h2>
 <a id="thanks" class="anchor" href="#thanks" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Thanks</h2>
@@ -305,8 +346,5 @@ which helped me learn a lot in such a short period.</p>
         <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
       </footer>
     </div>
-
-    
-
   </body>
 </html>
