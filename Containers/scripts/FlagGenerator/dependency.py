@@ -89,8 +89,10 @@ def build_pretend(cpv, flags):
             response = requests.get("http://"+SERVER_IP+"/sched-dep", params=payload)
             print "Link from", cpv, "->", dep_cpv, "sent to server"
             assert response.status_code == 200
+            sys.stdout.flush()
         else:
             print("Dependency", dep_cpv, "is already stable")
+            sys.stdout.flush()
 
 
 class myHandler(BaseHTTPRequestHandler):
@@ -101,6 +103,7 @@ class myHandler(BaseHTTPRequestHandler):
         path = b64pad(self.path[1:])
         cpv, flags = b64decode(path).split(";")
         print "Dependency got request for", cpv, flags
+        sys.stdout.flush()
         thread.start_new_thread(build_pretend, (cpv, flags))
         self.wfile.write("Ok!")
         return
